@@ -1,15 +1,13 @@
-// Backtest - canli motorla AYNI Engine/RiskManager/Portfolio kod yolunu kullanir.
+// Backtest CLI - canli motorla AYNI kod yolunu kullanan backtester cekirdegini kosar.
 // Kullanim: node src/backtest.js [SEMBOL] [ARALIK] [MUM_SAYISI] [STRATEJI]
 // Ornek:    node src/backtest.js BTCTRY 1h 1000 macd
 
-import { config, validateConfig, INTERVAL_MS } from "./config.js";
+import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import path from "node:path";
+import { config, validateConfig } from "./config.js";
 import { fetchKlines } from "./exchange/market.js";
-import { PaperBroker } from "./exchange/brokers.js";
 import { getStrategy, strategyNames } from "./strategies/index.js";
-import { Portfolio } from "./core/portfolio.js";
-import { RiskManager } from "./core/riskManager.js";
-import { Engine } from "./core/engine.js";
-import { computeMetrics } from "./core/metrics.js";
+import { runBacktest } from "./core/backtester.js";
 
 const symbol = (process.argv[2] || config.symbols[0]).toUpperCase();
 const interval = process.argv[3] || config.interval;
@@ -17,7 +15,7 @@ const limit = Math.min(parseInt(process.argv[4] || "1000", 10), 1000);
 const strategyName = (process.argv[5] || config.strategy).toLowerCase();
 
 async function main() {
-  config.tradeMode = "paper"; // backtest asla canli emir gondermez
+  config.tradeMode = "paper";
   config.interval = interval;
   const errors = validateConfig();
   if (errors.length) {
@@ -27,45 +25,18 @@ async function main() {
   const strategy = getStrategy(strategyName);
 
   console.log(`\nBacktest: ${symbol} ${interval} x${limit} mum | Strateji: ${strategy.name}`);
-  console.log(`Sermaye: ${config.paperBalance} TRY | SL %${config.stopLossPct} | TP %${config.takeProfitPct} | Komisyon %${config.feePct} | Kayma %${config.slippagePct}\n`);
+  console.log(
+    `Sermaye: ${config.paperBalance} TRY | stop=${config.stopMode} | Komisyon %${config.feePct} | Kayma %${config.slippagePct}` +
+    (config.htfFilter ? ` | HTF filtresi x${config.htfMultiple}` : "") + "\n"
+  );
 
   const klines = await fetchKlines(symbol, interval, limit);
-  const portfolio = new Portfolio(config.paperBalance);
-
-  // Backtest'te mum zamanini kullanan sanal saat - devre kesiciler dogru calisir
-  let simTime = klines[0].closeTime;
-  const risk = new RiskManager(config, () => simTime);
-  const broker = new PaperBroker(config);
-  const engine = new Engine({ symbol, strategy, cfg: config, portfolio, risk, broker });
-
-  const warmupBars = strategy.warmup(config);
-  const equityCurve = [];
-
-  for (let i = warmupBars; i < klines.length; i++) {
-    const candle = klines[i];
-    simTime = candle.closeTime;
-    // Canli akisla ayni sozlesme: kapanmis mumlar + "anlik" fiyat (mumun kapanisi)
-    await engine.step(klines.slice(0, i + 1), candle.close, simTime);
-    equityCurve.push(portfolio.equity({ [symbol]: candle.close }));
-  }
-
-  // Acik pozisyonu son fiyattan kapat
-  const lastCandle = klines[klines.length - 1];
-  if (portfolio.inPosition(symbol)) {
-    const fill = await broker.sell(symbol, portfolio.getPosition(symbol).qty, lastCandle.close);
-    fill.ts = lastCandle.closeTime;
-    portfolio.recordSell(symbol, fill);
-    equityCurve.push(portfolio.quote);
-  }
-
-  const barsPerYear = (365 * 24 * 3600 * 1000) / INTERVAL_MS[interval];
-  const m = computeMetrics({
-    equityCurve,
-    trades: portfolio.tradeLog,
-    initialBalance: config.paperBalance,
-    barsPerYear,
+  const { metrics: m, tradeLog, equityCurve } = await runBacktest({
+    klines, cfg: config, strategy, symbol, silent: true,
   });
 
+  const warmupBars = strategy.warmup(config);
+  const lastCandle = klines[klines.length - 1];
   const start = new Date(klines[0].openTime).toISOString().slice(0, 16);
   const end = new Date(lastCandle.closeTime).toISOString().slice(0, 16);
   const buyHold = ((lastCandle.close - klines[warmupBars].close) / klines[warmupBars].close) * 100;
@@ -81,7 +52,23 @@ async function main() {
   console.log(`Baslangic -> Bitis : ${config.paperBalance.toFixed(2)} -> ${m.finalEquity.toFixed(2)} TRY`);
   console.log(`Strateji getirisi  : %${m.totalReturnPct.toFixed(2)}`);
   console.log(`Al-ve-tut getirisi : %${buyHold.toFixed(2)} (karsilastirma)`);
-  console.log(`\nDiger stratejiler icin: node src/backtest.js ${symbol} ${interval} ${limit} [${strategyNames.join("|")}]`);
+
+  // Ozsermaye egrisi ve islem listesi CSV olarak disari aktarilir (analiz icin)
+  if (!existsSync(config.logDir)) mkdirSync(config.logDir, { recursive: true });
+  const equityCsv = "bar,equity\n" + equityCurve.map((e, i) => `${i},${e.toFixed(2)}`).join("\n");
+  const tradesCsv =
+    "openedAt,closedAt,symbol,qty,entryPrice,exitPrice,pnl\n" +
+    tradeLog.map((t) =>
+      `${new Date(t.openedAt).toISOString()},${new Date(t.closedAt).toISOString()},${t.symbol},${t.qty},${t.entryPrice},${t.exitPrice},${t.pnl.toFixed(2)}`
+    ).join("\n");
+  const eqPath = path.join(config.logDir, `backtest-${symbol}-${interval}-equity.csv`);
+  const trPath = path.join(config.logDir, `backtest-${symbol}-${interval}-trades.csv`);
+  writeFileSync(eqPath, equityCsv);
+  writeFileSync(trPath, tradesCsv);
+  console.log(`\nCSV cikti: ${eqPath}`);
+  console.log(`           ${trPath}`);
+  console.log(`\nDiger stratejiler: node src/backtest.js ${symbol} ${interval} ${limit} [${strategyNames.join("|")}]`);
+  console.log(`Optimizasyon     : node src/optimize.js ${symbol} ${interval} ${limit} ${strategyName}`);
 }
 
 main().catch((err) => {

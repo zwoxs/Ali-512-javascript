@@ -26,6 +26,7 @@ const num = (key, def) => {
   return Number.isFinite(v) ? v : def;
 };
 const str = (key, def) => (process.env[key] || def).trim();
+const bool = (key, def) => /^(1|true|yes|on)$/i.test(process.env[key] ?? String(def));
 
 export const INTERVAL_MS = {
   "1m": 60_000, "3m": 180_000, "5m": 300_000, "15m": 900_000, "30m": 1_800_000,
@@ -68,9 +69,19 @@ export const config = {
   riskPerTradePct: num("RISK_PER_TRADE_PCT", 1), // risk modu: islem basina riske edilen sermaye %'si
 
   // Cikis kurallari
+  // percent = sabit yuzde | atr = volatiliteye uyumlu (ATR carpani) stop/hedef
+  stopMode: str("STOP_MODE", "percent").toLowerCase(),
   stopLossPct: num("STOP_LOSS_PCT", 2),
   takeProfitPct: num("TAKE_PROFIT_PCT", 4),
   trailingStopPct: num("TRAILING_STOP_PCT", 0), // 0 = kapali
+  atrPeriod: num("ATR_PERIOD", 14),
+  atrStopMult: num("ATR_STOP_MULT", 2),
+  atrTpMult: num("ATR_TP_MULT", 3),
+
+  // Ust zaman dilimi (HTF) trend filtresi: dusus trendinde AL sinyallerini engeller
+  htfFilter: bool("HTF_FILTER", false),
+  htfMultiple: num("HTF_MULTIPLE", 4),     // 1 HTF mumu = kac taban mum
+  htfEmaPeriod: num("HTF_EMA_PERIOD", 20),
 
   // Devre kesiciler
   maxDailyLossPct: num("MAX_DAILY_LOSS_PCT", 5),      // gunluk zarar limiti (baslangic sermayesine gore %)
@@ -80,6 +91,11 @@ export const config = {
   // Islem maliyetleri
   feePct: num("FEE_PCT", 0.1),
   slippagePct: num("SLIPPAGE_PCT", 0.05), // paper/backtest gerceklik payi
+
+  // Gercek zamanli veri ve izleme
+  wsEnabled: bool("WS_ENABLED", true),
+  wsBaseUrl: str("WS_BASE_URL", "wss://stream.binance.com:9443"),
+  dashboardPort: num("DASHBOARD_PORT", 0), // 0 = kapali
 
   // API
   marketBaseUrl: str("MARKET_BASE_URL", "https://api.binance.com"),
@@ -110,5 +126,11 @@ export function validateConfig(cfg = config) {
   if (cfg.riskPerTradePct <= 0 || cfg.riskPerTradePct > 10)
     errors.push("RISK_PER_TRADE_PCT 0-10 arasinda olmali.");
   if (cfg.stopLossPct <= 0) errors.push("STOP_LOSS_PCT pozitif olmali.");
+  if (!["percent", "atr"].includes(cfg.stopMode))
+    errors.push("STOP_MODE 'percent' veya 'atr' olmali.");
+  if (cfg.stopMode === "atr" && (cfg.atrStopMult <= 0 || cfg.atrTpMult <= 0))
+    errors.push("ATR_STOP_MULT ve ATR_TP_MULT pozitif olmali.");
+  if (cfg.htfFilter && (!Number.isInteger(cfg.htfMultiple) || cfg.htfMultiple < 2))
+    errors.push("HTF_MULTIPLE en az 2 olan bir tam sayi olmali.");
   return errors;
 }

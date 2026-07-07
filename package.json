@@ -1,12 +1,13 @@
 {
   "name": "binance-tr-coin-bot",
-  "version": "2.0.0",
-  "description": "Binance TR icin coklu stratejili, risk yonetimli, kalici durumlu alim-satim botu (varsayilan: paper trading)",
+  "version": "3.0.0",
+  "description": "Binance TR icin coklu stratejili, risk yonetimli, WebSocket beslemeli, walk-forward optimizasyonlu alim-satim botu (varsayilan: paper trading)",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "backtest": "node src/backtest.js",
+    "optimize": "node src/optimize.js",
     "test": "node --test"
   },
   "engines": {

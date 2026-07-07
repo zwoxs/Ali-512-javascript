@@ -29,6 +29,7 @@ export class Portfolio {
     this.positions.set(symbol, {
       qty: fill.qty,
       entryPrice: fill.price,
+      entryFee: fill.fee, // K/Z tam tur maliyetle hesaplanir (giris + cikis komisyonu)
       highWater: fill.price,
       openedAt: fill.ts,
     });
@@ -39,7 +40,7 @@ export class Portfolio {
     const pos = this.positions.get(symbol);
     if (!pos) throw new Error(`${symbol} icin acik pozisyon yok.`);
     const proceeds = fill.qty * fill.price - fill.fee;
-    const cost = fill.qty * pos.entryPrice;
+    const cost = fill.qty * pos.entryPrice + (pos.entryFee || 0);
     const pnl = proceeds - cost;
 
     this.quote += proceeds;

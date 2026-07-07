@@ -38,18 +38,25 @@ export class RiskManager {
     return null;
   }
 
+  /** Stop mesafesi (fiyat birimi): ATR modu volatiliteye uyum saglar. */
+  stopDistance(price, atrValue = null) {
+    if (this.cfg.stopMode === "atr" && atrValue > 0) {
+      return atrValue * this.cfg.atrStopMult;
+    }
+    return price * (this.cfg.stopLossPct / 100);
+  }
+
   /**
    * Alinacak miktari hesaplar.
    * percent modu: bakiyenin sabit yuzdesi.
    * risk modu   : islem basina riske edilen sermaye / stop mesafesi
    *               (profesyonel boyutlama - stop genisse pozisyon kuculur).
    */
-  positionSize(quoteBalance, equity, price) {
+  positionSize(quoteBalance, equity, price, atrValue = null) {
     let budget;
     if (this.cfg.sizingMode === "risk") {
       const riskAmount = equity * (this.cfg.riskPerTradePct / 100);
-      const stopDistance = price * (this.cfg.stopLossPct / 100);
-      budget = (riskAmount / stopDistance) * price;
+      budget = (riskAmount / this.stopDistance(price, atrValue)) * price;
     } else {
       budget = quoteBalance * (this.cfg.positionPct / 100);
     }
@@ -60,23 +67,32 @@ export class RiskManager {
 
   /**
    * Acik pozisyon icin cikis kontrolu. Cikis gerekiyorsa neden dondurur.
-   * @param {{entryPrice: number, highWater: number}} pos
+   * ATR modunda stop/hedef giris anindaki volatiliteye gore sabitlenir.
+   * @param {{entryPrice: number, highWater: number, entryAtr?: number}} pos
    */
   checkExit(pos, price) {
-    const fromEntry = ((price - pos.entryPrice) / pos.entryPrice) * 100;
-    if (fromEntry <= -this.cfg.stopLossPct) {
-      return `Zarar durdur (%${fromEntry.toFixed(2)})`;
-    }
-    if (fromEntry >= this.cfg.takeProfitPct) {
-      return `Kar al (%${fromEntry.toFixed(2)})`;
+    if (this.cfg.stopMode === "atr" && pos.entryAtr > 0) {
+      const stopPrice = pos.entryPrice - pos.entryAtr * this.cfg.atrStopMult;
+      const tpPrice = pos.entryPrice + pos.entryAtr * this.cfg.atrTpMult;
+      if (price <= stopPrice) {
+        return `ATR zarar durdur (${price.toFixed(4)} <= ${stopPrice.toFixed(4)}, ${this.cfg.atrStopMult}xATR)`;
+      }
+      if (price >= tpPrice) {
+        return `ATR kar al (${price.toFixed(4)} >= ${tpPrice.toFixed(4)}, ${this.cfg.atrTpMult}xATR)`;
+      }
+    } else {
+      const fromEntry = ((price - pos.entryPrice) / pos.entryPrice) * 100;
+      if (fromEntry <= -this.cfg.stopLossPct) {
+        return `Zarar durdur (%${fromEntry.toFixed(2)})`;
+      }
+      if (fromEntry >= this.cfg.takeProfitPct) {
+        return `Kar al (%${fromEntry.toFixed(2)})`;
+      }
     }
     if (this.cfg.trailingStopPct > 0) {
       const fromHigh = ((price - pos.highWater) / pos.highWater) * 100;
       if (fromHigh <= -this.cfg.trailingStopPct && price > pos.entryPrice) {
-        return `Iz suren stop: zirveden %${(-fromHigh).toFixed(2)} geri cekilme (giris ustu kilitlendi)`;
-      }
-      if (fromHigh <= -this.cfg.trailingStopPct && this.cfg.trailingStopPct < this.cfg.stopLossPct) {
-        return `Iz suren stop: zirveden %${(-fromHigh).toFixed(2)} geri cekilme`;
+        return `Iz suren stop: zirveden %${(-fromHigh).toFixed(2)} geri cekilme (kar kilitlendi)`;
       }
     }
     return null;
