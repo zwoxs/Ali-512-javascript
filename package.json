@@ -1,0 +1,16 @@
+{
+  "name": "binance-tr-coin-bot",
+  "version": "1.0.0",
+  "description": "Binance TR icin EMA + RSI stratejili, risk yonetimli alim-satim botu (varsayilan: paper trading)",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "backtest": "node src/backtest.js",
+    "check": "node --check src/index.js && node --check src/backtest.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
