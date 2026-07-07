@@ -108,5 +108,61 @@ export function atr(candles, period = 14) {
   return out;
 }
 
+/**
+ * Donchian kanali: her nokta icin ONCEKI `period` mumun en yuksek/en dusugu
+ * (mevcut mum haric - kirilim tespiti icin dogru referans).
+ * Donen diziler candles.length - period uzunlugundadir.
+ */
+export function donchian(candles, period) {
+  const upper = [], lower = [];
+  for (let i = period; i < candles.length; i++) {
+    let hi = -Infinity, lo = Infinity;
+    for (let j = i - period; j < i; j++) {
+      if (candles[j].high > hi) hi = candles[j].high;
+      if (candles[j].low < lo) lo = candles[j].low;
+    }
+    upper.push(hi);
+    lower.push(lo);
+  }
+  return { upper, lower };
+}
+
+/**
+ * SuperTrend: ATR tabanli trend takip cizgisi.
+ * @returns {{trend: number[], line: number[]}} trend: 1 (yukari) / -1 (asagi)
+ */
+export function supertrend(candles, period = 10, mult = 3) {
+  const atrs = atr(candles, period);
+  const trend = [], line = [];
+  let prevUpper = Infinity, prevLower = -Infinity, prevTrend = 1;
+
+  for (let k = 0; k < atrs.length; k++) {
+    const i = k + period;
+    const c = candles[i];
+    const mid = (c.high + c.low) / 2;
+    const rawUpper = mid + mult * atrs[k];
+    const rawLower = mid - mult * atrs[k];
+
+    let finalUpper = rawUpper, finalLower = rawLower;
+    if (k > 0) {
+      const prevClose = candles[i - 1].close;
+      finalUpper = rawUpper < prevUpper || prevClose > prevUpper ? rawUpper : prevUpper;
+      finalLower = rawLower > prevLower || prevClose < prevLower ? rawLower : prevLower;
+    }
+
+    let t;
+    if (k === 0) t = c.close >= finalLower ? 1 : -1;
+    else if (prevTrend === 1) t = c.close < finalLower ? -1 : 1;
+    else t = c.close > finalUpper ? 1 : -1;
+
+    trend.push(t);
+    line.push(t === 1 ? finalLower : finalUpper);
+    prevUpper = finalUpper;
+    prevLower = finalLower;
+    prevTrend = t;
+  }
+  return { trend, line };
+}
+
 export const last = (arr) => arr[arr.length - 1];
 export const prevLast = (arr) => arr[arr.length - 2];

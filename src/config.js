@@ -34,17 +34,34 @@ export const INTERVAL_MS = {
   "8h": 28_800_000, "12h": 43_200_000, "1d": 86_400_000, "1w": 604_800_000,
 };
 
+/**
+ * SYMBOLS girdisini ayristirir. Sembol basina strateji atanabilir:
+ * "BTCTRY:ema_rsi,ETHTRY:supertrend" veya duz "BTCTRY,ETHTRY".
+ */
+export function parseSymbolEntries(raw) {
+  const symbols = [];
+  const symbolStrategies = {};
+  for (const entry of raw.split(",")) {
+    const [sym, strat] = entry.split(":");
+    const symbol = sym?.trim().toUpperCase();
+    if (!symbol) continue;
+    symbols.push(symbol);
+    if (strat?.trim()) symbolStrategies[symbol] = strat.trim().toLowerCase();
+  }
+  return { symbols, symbolStrategies };
+}
+
+const { symbols: parsedSymbols, symbolStrategies: parsedSymbolStrategies } =
+  parseSymbolEntries(str("SYMBOLS", str("SYMBOL", "BTCTRY")));
+
 export const config = {
   root: ROOT,
   dataDir: path.join(ROOT, "data"),
   logDir: path.join(ROOT, "logs"),
 
   tradeMode: str("TRADE_MODE", "paper").toLowerCase(),
-  symbols: str("SYMBOLS", str("SYMBOL", "BTCTRY"))
-    .toUpperCase()
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean),
+  symbols: parsedSymbols,
+  symbolStrategies: parsedSymbolStrategies, // sembol -> strateji adi (bos: STRATEGY kullanilir)
   interval: str("INTERVAL", "15m"),
   pollSeconds: num("POLL_SECONDS", 30),
   logLevel: str("LOG_LEVEL", "info").toLowerCase(),
@@ -61,6 +78,10 @@ export const config = {
   macdSignal: num("MACD_SIGNAL", 9),
   bbPeriod: num("BB_PERIOD", 20),
   bbStdDev: num("BB_STDDEV", 2),
+  donchianEntry: num("DONCHIAN_ENTRY", 20),
+  donchianExit: num("DONCHIAN_EXIT", 10),
+  supertrendPeriod: num("SUPERTREND_PERIOD", 10),
+  supertrendMult: num("SUPERTREND_MULT", 3),
 
   // Sermaye ve boyutlama
   paperBalance: num("PAPER_BALANCE", 10000),
@@ -77,6 +98,11 @@ export const config = {
   atrPeriod: num("ATR_PERIOD", 14),
   atrStopMult: num("ATR_STOP_MULT", 2),
   atrTpMult: num("ATR_TP_MULT", 3),
+
+  // Kismi kar alma (scale-out): kar bu yuzdeye ulasinca pozisyonun bir kismi
+  // kapatilir ve stop basabas noktasina cekilir (0 = kapali)
+  partialTpPct: num("PARTIAL_TP_PCT", 0),
+  partialTpSize: num("PARTIAL_TP_SIZE", 50), // pozisyonun yuzde kaci kapatilsin
 
   // Ust zaman dilimi (HTF) trend filtresi: dusus trendinde AL sinyallerini engeller
   htfFilter: bool("HTF_FILTER", false),
@@ -106,6 +132,7 @@ export const config = {
   // Bildirim
   telegramToken: str("TELEGRAM_BOT_TOKEN", ""),
   telegramChatId: str("TELEGRAM_CHAT_ID", ""),
+  dailyReportHour: num("DAILY_REPORT_HOUR", 21), // gunluk ozet raporu saati (yerel, -1 = kapali)
 };
 
 export function validateConfig(cfg = config) {
@@ -132,5 +159,11 @@ export function validateConfig(cfg = config) {
     errors.push("ATR_STOP_MULT ve ATR_TP_MULT pozitif olmali.");
   if (cfg.htfFilter && (!Number.isInteger(cfg.htfMultiple) || cfg.htfMultiple < 2))
     errors.push("HTF_MULTIPLE en az 2 olan bir tam sayi olmali.");
+  if (cfg.partialTpPct > 0 && (cfg.partialTpSize < 1 || cfg.partialTpSize > 90))
+    errors.push("PARTIAL_TP_SIZE 1-90 arasinda olmali (pozisyonun tamamini kismi satista kapatmayin).");
+  if (cfg.donchianExit >= cfg.donchianEntry)
+    errors.push("DONCHIAN_EXIT, DONCHIAN_ENTRY'den kucuk olmali.");
+  if (cfg.supertrendPeriod <= 0 || cfg.supertrendMult <= 0)
+    errors.push("SUPERTREND_PERIOD ve SUPERTREND_MULT pozitif olmali.");
   return errors;
 }

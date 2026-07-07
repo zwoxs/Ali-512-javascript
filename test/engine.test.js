@@ -5,7 +5,7 @@ import { Engine } from "../src/core/engine.js";
 import { Portfolio } from "../src/core/portfolio.js";
 import { RiskManager } from "../src/core/riskManager.js";
 import { PaperBroker, roundToStep } from "../src/exchange/brokers.js";
-import { getStrategy } from "../src/strategies/index.js";
+import { getStrategy, strategyNames } from "../src/strategies/index.js";
 
 const cfg = {
   tradeMode: "paper",
@@ -30,6 +30,10 @@ const cfg = {
   macdSignal: 9,
   bbPeriod: 20,
   bbStdDev: 2,
+  donchianEntry: 20,
+  donchianExit: 10,
+  supertrendPeriod: 10,
+  supertrendMult: 3,
 };
 
 function makeCandles(prices) {
@@ -98,7 +102,7 @@ test("stop-loss tetiklendiginde pozisyon kapanir", async () => {
 
 test("tum stratejiler sozlesmeye uyar (HOLD yetersiz veride, gecerli sinyal tipleri)", () => {
   const candles = makeCandles(wavePrices());
-  for (const name of ["ema_rsi", "macd", "bollinger"]) {
+  for (const name of strategyNames) {
     const s = getStrategy(name);
     assert.ok(s.warmup(cfg) > 0);
     const short = s.evaluate(candles.slice(0, 3), cfg);

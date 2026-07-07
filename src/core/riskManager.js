@@ -71,6 +71,11 @@ export class RiskManager {
    * @param {{entryPrice: number, highWater: number, entryAtr?: number}} pos
    */
   checkExit(pos, price) {
+    // Kismi kar alindiktan sonra stop basabas noktasina cekilir:
+    // kalan pozisyon artik zarar edemez.
+    if (pos.partialDone && price <= pos.entryPrice) {
+      return `Basabas stop (kismi kar sonrasi giris fiyati korundu)`;
+    }
     if (this.cfg.stopMode === "atr" && pos.entryAtr > 0) {
       const stopPrice = pos.entryPrice - pos.entryAtr * this.cfg.atrStopMult;
       const tpPrice = pos.entryPrice + pos.entryAtr * this.cfg.atrTpMult;
@@ -98,17 +103,33 @@ export class RiskManager {
     return null;
   }
 
-  /** Kapanan islemin sonucunu isler; devre kesicileri gunceller. */
-  onTradeClosed(pnl, initialEquity) {
+  /** Kismi kar alma zamani geldi mi? Neden dondurur, degilse null. */
+  checkPartial(pos, price) {
+    if (!(this.cfg.partialTpPct > 0) || pos.partialDone) return null;
+    const fromEntry = ((price - pos.entryPrice) / pos.entryPrice) * 100;
+    if (fromEntry >= this.cfg.partialTpPct) {
+      return `Kismi kar al (%${fromEntry.toFixed(2)}): pozisyonun %${this.cfg.partialTpSize}'i kapatiliyor, stop basabasa cekildi`;
+    }
+    return null;
+  }
+
+  /**
+   * Kapanan islemin sonucunu isler; devre kesicileri gunceller.
+   * Kismi satislar gunluk K/Z'ye sayilir ama ardisik zarar sayacini etkilemez
+   * (kismi satis her zaman karda tetiklenir; seri, tamamlanan islemlerle olculur).
+   */
+  onTradeClosed(pnl, initialEquity, { partial = false } = {}) {
     this._rollDay();
     this.dailyPnl += pnl;
-    if (pnl < 0) {
-      this.consecutiveLosses++;
-      if (this.consecutiveLosses >= this.cfg.maxConsecutiveLosses) {
-        this.cooldownUntil = this.now() + this.cfg.cooldownMinutes * 60_000;
+    if (!partial) {
+      if (pnl < 0) {
+        this.consecutiveLosses++;
+        if (this.consecutiveLosses >= this.cfg.maxConsecutiveLosses) {
+          this.cooldownUntil = this.now() + this.cfg.cooldownMinutes * 60_000;
+        }
+      } else {
+        this.consecutiveLosses = 0;
       }
-    } else {
-      this.consecutiveLosses = 0;
     }
     const dailyLossPct = (-this.dailyPnl / initialEquity) * 100;
     if (dailyLossPct >= this.cfg.maxDailyLossPct) {

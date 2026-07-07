@@ -52,13 +52,17 @@ export class Engine {
   async step(closedCandles, currentPrice, ts) {
     const pos = this.portfolio.getPosition(this.symbol);
 
-    // 1) Acik pozisyon: iz suren stop icin zirve takibi + cikis kontrolu (her adimda)
+    // 1) Acik pozisyon: zirve takibi + tam cikis / kismi kar alma (her adimda)
     if (pos) {
       this.portfolio.updateHighWater(this.symbol, currentPrice);
       const exitReason = this.risk.checkExit(pos, currentPrice);
       if (exitReason) {
         await this._sell(currentPrice, exitReason, ts);
         return;
+      }
+      const partialReason = this.risk.checkPartial(pos, currentPrice);
+      if (partialReason) {
+        await this._partialSell(currentPrice, partialReason, ts);
       }
     }
 
@@ -105,6 +109,20 @@ export class Engine {
     this.portfolio.recordBuy(this.symbol, fill);
     if (atrValue) this.portfolio.getPosition(this.symbol).entryAtr = atrValue;
     const record = { side: "AL", symbol: this.symbol, qty: fill.qty, price: fill.price, reason, mode: this.cfg.tradeMode };
+    this._logTrade(record);
+    await this.onTrade(record);
+  }
+
+  async _partialSell(price, reason, ts) {
+    const pos = this.portfolio.getPosition(this.symbol);
+    if (!pos) return;
+    const sellQty = pos.qty * (this.cfg.partialTpSize / 100);
+    const fill = await this.broker.sell(this.symbol, sellQty, price);
+    if (!fill || fill.qty >= pos.qty) return; // yuvarlama tum pozisyonu kapatacaksa vazgec
+    fill.ts = ts;
+    const pnl = this.portfolio.recordPartialSell(this.symbol, fill);
+    this.risk.onTradeClosed(pnl, this.portfolio.initialQuote, { partial: true });
+    const record = { side: "KISMI-SAT", symbol: this.symbol, qty: fill.qty, price: fill.price, pnl, reason, mode: this.cfg.tradeMode };
     this._logTrade(record);
     await this.onTrade(record);
   }

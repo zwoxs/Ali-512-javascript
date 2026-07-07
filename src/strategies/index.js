@@ -7,11 +7,15 @@
 import * as emaRsi from "./emaRsi.js";
 import * as macdCross from "./macdCross.js";
 import * as bollingerRevert from "./bollingerRevert.js";
+import * as donchianBreakout from "./donchianBreakout.js";
+import * as supertrendFlip from "./supertrendFlip.js";
 
 const REGISTRY = {
   ema_rsi: emaRsi,
   macd: macdCross,
   bollinger: bollingerRevert,
+  donchian: donchianBreakout,
+  supertrend: supertrendFlip,
 };
 
 export function getStrategy(name) {

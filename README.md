@@ -1,8 +1,9 @@
 # 🤖 Binance TR Coin Bot
 
 Katmanlı mimarili, gerçek zamanlı WebSocket beslemeli, walk-forward optimizasyonlu,
-kurumsal risk yönetimli kripto alım-satım botu. **Hiçbir harici paket gerektirmez** —
-Node.js 18+ yeterlidir (WebSocket akışı için 21+; yoksa otomatik REST'e düşer).
+Monte Carlo doğrulamalı, kurumsal risk yönetimli kripto alım-satım botu.
+**Hiçbir harici paket gerektirmez** — Node.js 18+ yeterlidir (WebSocket akışı
+için 21+; yoksa otomatik REST'e düşer).
 
 > ⚠️ **YASAL UYARI:** Kripto para alım-satımı yüksek risk içerir ve paranızın tamamını
 > kaybetmenize yol açabilir. Bu bot eğitim amaçlıdır, yatırım tavsiyesi değildir.
@@ -15,25 +16,30 @@ Node.js 18+ yeterlidir (WebSocket akışı için 21+; yoksa otomatik REST'e dü�
 **Veri ve yürütme**
 - 📡 **WebSocket kline akışı**: gerçek zamanlı mum güncellemeleri; kopunca üstel geri çekilmeyle yeniden bağlanır, akış bayatlarsa **şeffaf REST fallback** — motor kaynağı bilmez
 - 🔁 **Tek kod yolu**: backtest, optimizasyon ve canlı işlem aynı `Engine`/`RiskManager`/`Portfolio` sınıflarından geçer
-- 🧩 **Takılabilir stratejiler**: `ema_rsi` (trend), `macd` (momentum), `bollinger` (ortalamaya dönüş) — ortak sözleşme, tek dosyayla yenisi eklenir
+- 🧩 **5 takılabilir strateji**: `ema_rsi` (trend), `macd` (momentum), `bollinger` (ortalamaya dönüş), `donchian` (Turtle kanal kırılımı), `supertrend` (ATR trend takibi)
+- 🎯 **Sembol başına strateji**: `SYMBOLS=BTCTRY:ema_rsi,ETHTRY:supertrend` — çoklu strateji portföyü
+- 🕐 **Borsa saati senkronizasyonu**: imzalı isteklerde saat sapması hataları önlenir
 
 **Risk yönetimi**
 - 📏 **Risk bazlı boyutlama**: pozisyon büyüklüğü = riske edilen sermaye / stop mesafesi
 - 🌊 **ATR (volatiliteye uyumlu) stoplar**: `STOP_MODE=atr` ile stop/hedef, giriş anındaki piyasa oynaklığına göre belirlenir — sakin piyasada dar, dalgalı piyasada geniş
+- ✂️ **Kısmi kâr alma (scale-out)**: hedefin ilk kademesinde pozisyonun bir kısmı kapatılır, stop başabaşa çekilir — **kalan pozisyon artık zarar edemez**
 - 🧭 **Üst zaman dilimi trend filtresi**: `HTF_FILTER=true` ile düşüş trendinde AL sinyalleri engellenir
 - 🛑 **İz süren stop, günlük zarar limiti, ardışık zarar soğuması**: üç bağımsız devre kesici
 - 🧮 **Tam tur muhasebe**: K/Z hesabına giriş + çıkış komisyonu ve kayma dahildir
 
 **Araştırma araçları**
-- ⏪ **Backtest**: maks. düşüş, Sharpe, kâr faktörü + özsermaye/işlem **CSV dışa aktarımı**
+- ⏪ **Backtest**: maks. düşüş, Sharpe, **Sortino, CAGR, Calmar, piyasada kalma oranı, en uzun zarar serisi** + CSV dışa aktarımı
+- 🎲 **Monte Carlo sağlamlık analizi**: işlem sırası 1000 kez karıştırılır — getiri/düşüş dağılımı (p5/p50/p95) ve **iflas olasılığı** raporlanır; şanslı sıralamaya bağımlı sonuçlar ifşa edilir
 - 🔬 **Walk-forward optimizasyon**: parametreler eğitim diliminde aranır, görülmemiş test diliminde doğrulanır — **aşırı uyum (overfitting) uyarısıyla**
+- 💽 **Kline disk önbelleği**: optimizasyondaki yüzlerce koşum tek indirmeyle beslenir
 
 **Operasyon**
-- 📊 **Web izleme paneli**: özsermaye grafiği, açık pozisyonlar, işlem geçmişi, devre kesici durumu (`DASHBOARD_PORT=8080`)
+- 📊 **Web izleme paneli** + `/api/health` endpoint'i (uptime izleme / k8s liveness için)
 - 💾 **Atomik durum kalıcılığı**: yeniden başlatmada pozisyonlar diskten kurtarılır
-- 📱 **Telegram bildirimleri**, JSONL denetim izi, seviyeli loglama
+- 📱 **Telegram**: işlem bildirimleri, **günlük özet raporu**, ardışık hata alarmı
 - 🐳 **Docker + docker-compose + pm2** dağıtım dosyaları, **GitHub Actions CI**
-- ✅ **32 birim/entegrasyon testi** (`npm test`)
+- ✅ **42 birim/entegrasyon testi** (`npm test`)
 
 ## Kurulum
 
@@ -110,22 +116,23 @@ src/
 ├── state.js                  # Atomik durum kaliciligi (data/state.json)
 ├── notifier.js               # Telegram bildirimleri (hata botu durdurmaz)
 ├── dashboard.js              # Yerlesik web izleme paneli (sadece 127.0.0.1)
-├── indicators.js             # SMA, EMA, RSI, MACD, Bollinger, ATR - saf fonksiyonlar
-├── strategies/               # Strateji kayit defteri + 3 strateji (ortak sozlesme)
+├── indicators.js             # SMA, EMA, RSI, MACD, Bollinger, ATR, Donchian, SuperTrend
+├── strategies/               # Strateji kayit defteri + 5 strateji (ortak sozlesme)
 ├── core/
 │   ├── engine.js             # Karar dongusu - backtest ve canli icin TEK kod yolu
-│   ├── portfolio.js          # Tam tur muhasebe: bakiye, pozisyon, K/Z defteri
-│   ├── riskManager.js        # Boyutlama, percent/ATR stoplar, devre kesiciler
+│   ├── portfolio.js          # Tam tur muhasebe: bakiye, pozisyon, kismi satis, K/Z defteri
+│   ├── riskManager.js        # Boyutlama, percent/ATR stoplar, kismi kar, devre kesiciler
 │   ├── trendFilter.js        # Ust zaman dilimi EMA trend filtresi
 │   ├── backtester.js         # Yeniden kullanilabilir backtest cekirdegi
 │   ├── optimizer.js          # Izgara arama + walk-forward dogrulama
-│   └── metrics.js            # Drawdown, Sharpe, kar faktoru
+│   ├── monteCarlo.js         # Islem sirasi karistirma - saglamlik/iflas analizi
+│   └── metrics.js            # Drawdown, Sharpe, Sortino, CAGR, Calmar, kar faktoru
 └── exchange/
     ├── wsFeed.js             # WebSocket kline akisi + otomatik REST fallback
-    ├── market.js             # REST veri - yeniden deneme + rate-limit yonetimi
+    ├── market.js             # REST veri - yeniden deneme, rate-limit, disk onbellegi
     ├── brokers.js            # PaperBroker / LiveBroker (ayni arayuz) + LOT_SIZE
-    └── binanceTr.js          # Binance TR Open API imzali istekler (HMAC-SHA256)
-test/                         # 32 birim + entegrasyon testi (node:test)
+    └── binanceTr.js          # Binance TR Open API imzali istekler + saat senkronu
+test/                         # 42 birim + entegrasyon testi (node:test)
 .github/workflows/ci.yml      # Her push'ta sozdizimi + test kosan CI
 Dockerfile / docker-compose.yml / ecosystem.config.cjs
 ```
@@ -141,10 +148,11 @@ Tam liste `.env.example` içinde. Öne çıkanlar:
 | Değişken | Varsayılan | Açıklama |
 |---|---|---|
 | `TRADE_MODE` | `paper` | `paper` = simülasyon, `live` = gerçek emir |
-| `SYMBOLS` | `BTCTRY` | Virgülle çoklu: `BTCTRY,ETHTRY` |
-| `STRATEGY` | `ema_rsi` | `ema_rsi` \| `macd` \| `bollinger` |
+| `SYMBOLS` | `BTCTRY` | Çoklu + sembol başına strateji: `BTCTRY:ema_rsi,ETHTRY:macd` |
+| `STRATEGY` | `ema_rsi` | `ema_rsi` \| `macd` \| `bollinger` \| `donchian` \| `supertrend` |
 | `SIZING_MODE` | `percent` | `percent` \| `risk` (stop mesafesine göre) |
 | `STOP_MODE` | `percent` | `percent` \| `atr` (volatiliteye uyumlu) |
+| `PARTIAL_TP_PCT` | `0` | Kısmi kâr alma eşiği (0 = kapalı) |
 | `HTF_FILTER` | `false` | Üst zaman dilimi trend filtresi |
 | `TRAILING_STOP_PCT` | `0` | İz süren stop (0 = kapalı) |
 | `MAX_DAILY_LOSS_PCT` | `5` | Günlük zarar devre kesicisi |

@@ -19,11 +19,17 @@ async function main() {
     process.exit(1);
   }
 
-  const strategy = getStrategy(config.strategy);
+  // Sembol basina strateji: SYMBOLS=BTCTRY:ema_rsi,ETHTRY:supertrend
+  const strategyBySymbol = Object.fromEntries(
+    config.symbols.map((s) => [s, getStrategy(config.symbolStrategies[s] || config.strategy)])
+  );
+  const strategyDesc = config.symbols
+    .map((s) => `${s}=${config.symbolStrategies[s] || config.strategy}`)
+    .join(", ");
 
   log.info("==================== BINANCE TR COIN BOT ====================");
-  log.info(`Mod: ${config.tradeMode.toUpperCase()} | Semboller: ${config.symbols.join(", ")} | Mum: ${config.interval}`);
-  log.info(`Strateji: ${strategy.name}${config.htfFilter ? ` + HTF(x${config.htfMultiple}) trend filtresi` : ""}`);
+  log.info(`Mod: ${config.tradeMode.toUpperCase()} | Mum: ${config.interval}`);
+  log.info(`Stratejiler: ${strategyDesc}${config.htfFilter ? ` + HTF(x${config.htfMultiple}) trend filtresi` : ""}`);
   log.info(
     `Risk: boyutlama=${config.sizingMode}, stop=${config.stopMode}` +
     (config.stopMode === "atr"
@@ -52,7 +58,7 @@ async function main() {
   };
 
   const engines = config.symbols.map(
-    (symbol) => new Engine({ symbol, strategy, cfg: config, portfolio, risk, broker, onTrade })
+    (symbol) => new Engine({ symbol, strategy: strategyBySymbol[symbol], cfg: config, portfolio, risk, broker, onTrade })
   );
 
   const feed = new MarketFeed(config.symbols, config.interval);
@@ -61,11 +67,12 @@ async function main() {
   // --- Izleme paneli durumu ---
   const equityHistory = [];
   const latestPrices = {};
+  const startedAt = Date.now();
   const getStatus = () => ({
     mode: config.tradeMode,
     symbols: config.symbols,
     interval: config.interval,
-    strategy: strategy.name,
+    strategy: strategyDesc,
     initialBalance: portfolio.initialQuote,
     equity: portfolio.equity(latestPrices),
     quote: portfolio.quote,
@@ -87,7 +94,17 @@ async function main() {
     },
     equityHistory,
   });
-  const dashboard = startDashboard(config.dashboardPort, getStatus);
+  const getHealth = () => ({
+    status: "ok",
+    uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
+    memoryMb: +(process.memoryUsage().rss / 1048576).toFixed(1),
+    feed: {
+      websocket: feed.wsSupported,
+      lastEventAgeSec: feed.lastEvent ? Math.floor((Date.now() - feed.lastEvent) / 1000) : null,
+    },
+    node: process.version,
+  });
+  const dashboard = startDashboard(config.dashboardPort, getStatus, getHealth);
 
   let running = true;
   const shutdown = () => {
@@ -97,7 +114,11 @@ async function main() {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  await notify(`🤖 Bot basladi [${config.tradeMode}] ${config.symbols.join(", ")} @ ${config.interval} (${strategy.name})`);
+  await notify(`🤖 Bot basladi [${config.tradeMode}] ${config.interval} | ${strategyDesc}`);
+
+  // Ardisik veri hatalarinda tek seferlik Telegram uyarisi (spam yok)
+  const errorStreaks = new Map();
+  let lastReportDay = new Date().toISOString().slice(0, 10);
 
   let tick = 0;
   while (running) {
@@ -106,8 +127,24 @@ async function main() {
         const { closedCandles, currentPrice } = await feed.snapshot(engine.symbol);
         latestPrices[engine.symbol] = currentPrice;
         await engine.step(closedCandles, currentPrice, Date.now());
+        errorStreaks.set(engine.symbol, 0);
       } catch (err) {
         log.error(`${engine.symbol}: ${err.message}`);
+        const streak = (errorStreaks.get(engine.symbol) || 0) + 1;
+        errorStreaks.set(engine.symbol, streak);
+        if (streak === 5) {
+          await notify(`🚨 ${engine.symbol}: 5 ardisik veri/islem hatasi - son hata: ${err.message}`);
+        }
+      }
+    }
+
+    // Gunluk ozet raporu (Telegram)
+    if (config.dailyReportHour >= 0) {
+      const now = new Date();
+      const today = now.toISOString().slice(0, 10);
+      if (today !== lastReportDay && now.getHours() >= config.dailyReportHour) {
+        lastReportDay = today;
+        await notify(`📊 Gunluk ozet:\n${portfolio.summary(latestPrices)}`);
       }
     }
     if (Object.keys(latestPrices).length) {

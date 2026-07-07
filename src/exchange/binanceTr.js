@@ -12,13 +12,33 @@ function sign(queryString) {
   return createHmac("sha256", config.apiSecret).update(queryString).digest("hex");
 }
 
+// Borsa saati senkronizasyonu: yerel saat borsadan sapmissa imzali istekler
+// "timestamp outside recvWindow" hatasiyla reddedilir. Ofset 30 dk'da bir tazelenir.
+let timeOffset = 0;
+let lastClockSync = 0;
+
+async function syncClock() {
+  if (Date.now() - lastClockSync < 30 * 60_000) return;
+  try {
+    const res = await fetch(`${config.marketBaseUrl}/api/v3/time`, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    const { serverTime } = await res.json();
+    timeOffset = serverTime - Date.now();
+    lastClockSync = Date.now();
+  } catch {
+    // senkronizasyon basarisiz: mevcut ofsetle devam edilir
+  }
+}
+
 async function signedRequest(method, endpoint, params = {}) {
   if (!config.apiKey || !config.apiSecret) {
     throw new Error("API anahtari eksik: BINANCE_TR_API_KEY / BINANCE_TR_API_SECRET ayarlayin.");
   }
+  await syncClock();
   const query = new URLSearchParams({
     ...params,
-    timestamp: Date.now().toString(),
+    timestamp: String(Date.now() + timeOffset),
     recvWindow: "5000",
   });
   query.append("signature", sign(query.toString()));

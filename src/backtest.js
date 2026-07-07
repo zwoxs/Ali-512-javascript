@@ -5,9 +5,10 @@
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { config, validateConfig } from "./config.js";
-import { fetchKlines } from "./exchange/market.js";
+import { fetchKlinesCached } from "./exchange/market.js";
 import { getStrategy, strategyNames } from "./strategies/index.js";
 import { runBacktest } from "./core/backtester.js";
+import { monteCarlo } from "./core/monteCarlo.js";
 
 const symbol = (process.argv[2] || config.symbols[0]).toUpperCase();
 const interval = process.argv[3] || config.interval;
@@ -30,7 +31,7 @@ async function main() {
     (config.htfFilter ? ` | HTF filtresi x${config.htfMultiple}` : "") + "\n"
   );
 
-  const klines = await fetchKlines(symbol, interval, limit);
+  const klines = await fetchKlinesCached(symbol, interval, limit);
   const { metrics: m, tradeLog, equityCurve } = await runBacktest({
     klines, cfg: config, strategy, symbol, silent: true,
   });
@@ -47,11 +48,28 @@ async function main() {
   console.log(`Kazanma orani      : %${m.winRatePct.toFixed(1)}`);
   console.log(`Ort. kazanc/kayip  : +${m.avgWin.toFixed(2)} / ${m.avgLoss.toFixed(2)} TRY`);
   console.log(`Kar faktoru        : ${m.profitFactor === Infinity ? "∞" : m.profitFactor.toFixed(2)}`);
+  console.log(`En uzun zarar seri : ${m.longestLossStreak} islem`);
+  console.log(`Piyasada kalma     : %${m.exposurePct?.toFixed(1) ?? "-"}`);
   console.log(`Maks. dusus        : %${m.maxDrawdownPct.toFixed(2)}`);
-  console.log(`Sharpe orani       : ${m.sharpe.toFixed(2)}`);
+  console.log(`Sharpe / Sortino   : ${m.sharpe.toFixed(2)} / ${m.sortino === Infinity ? "∞" : m.sortino.toFixed(2)}`);
+  console.log(`CAGR (yillik)      : %${m.cagrPct.toFixed(2)} | Calmar: ${m.calmar.toFixed(2)}`);
   console.log(`Baslangic -> Bitis : ${config.paperBalance.toFixed(2)} -> ${m.finalEquity.toFixed(2)} TRY`);
   console.log(`Strateji getirisi  : %${m.totalReturnPct.toFixed(2)}`);
   console.log(`Al-ve-tut getirisi : %${buyHold.toFixed(2)} (karsilastirma)`);
+
+  // Monte Carlo saglamlik analizi: islem sirasi 1000 kez karistirilir
+  const mc = monteCarlo({ trades: tradeLog, initialBalance: config.paperBalance });
+  if (mc) {
+    console.log("\n============== MONTE CARLO (1000 karistirma) ==============");
+    console.log(`Getiri dagilimi    : p5 %${mc.p5ReturnPct.toFixed(1)} | medyan %${mc.p50ReturnPct.toFixed(1)} | p95 %${mc.p95ReturnPct.toFixed(1)}`);
+    console.log(`Dusus dagilimi     : medyan %${mc.p50DrawdownPct.toFixed(1)} | p95 %${mc.p95DrawdownPct.toFixed(1)}`);
+    console.log(`Iflas olasiligi    : %${mc.ruinProbabilityPct.toFixed(1)} (sermayenin %${mc.ruinThresholdPct}'ine dusme)`);
+    if (mc.p5ReturnPct < 0 && m.totalReturnPct > 0) {
+      console.log("⚠️  Karli gorunen backtest, kotu siralamada zarara donusebiliyor - temkinli olun.");
+    }
+  } else {
+    console.log("\n(Monte Carlo icin en az 5 islem gerekir - atlandi.)");
+  }
 
   // Ozsermaye egrisi ve islem listesi CSV olarak disari aktarilir (analiz icin)
   if (!existsSync(config.logDir)) mkdirSync(config.logDir, { recursive: true });

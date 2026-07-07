@@ -43,11 +43,46 @@ export function profitFactor(trades) {
   return grossProfit / grossLoss;
 }
 
-export function computeMetrics({ equityCurve, trades, initialBalance, barsPerYear }) {
+/**
+ * Sortino orani: Sharpe gibi ama sadece asagi yonlu oynakligi cezalandirir.
+ * Yukari volatilite "risk" sayilmaz - kurumsal raporlamada tercih edilir.
+ */
+export function sortinoRatio(equityCurve, barsPerYear) {
+  if (equityCurve.length < 3) return 0;
+  const returns = [];
+  for (let i = 1; i < equityCurve.length; i++) {
+    returns.push(equityCurve[i] / equityCurve[i - 1] - 1);
+  }
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const downside = returns.filter((r) => r < 0);
+  if (downside.length === 0) return mean > 0 ? Infinity : 0;
+  const downsideDev = Math.sqrt(downside.reduce((a, r) => a + r ** 2, 0) / returns.length);
+  if (downsideDev === 0) return 0;
+  return (mean / downsideDev) * Math.sqrt(barsPerYear);
+}
+
+/** En uzun ardisik zarar serisi (kismi satislar haric). */
+export function longestLossStreak(trades) {
+  let streak = 0, longest = 0;
+  for (const t of trades) {
+    if (t.partial) continue;
+    if (t.pnl < 0) longest = Math.max(longest, ++streak);
+    else streak = 0;
+  }
+  return longest;
+}
+
+export function computeMetrics({ equityCurve, trades, initialBalance, barsPerYear, exposureBars = null }) {
   const finalEquity = equityCurve[equityCurve.length - 1] ?? initialBalance;
   const wins = trades.filter((t) => t.pnl > 0);
   const losses = trades.filter((t) => t.pnl <= 0);
   const avg = (arr) => (arr.length ? arr.reduce((a, t) => a + t.pnl, 0) / arr.length : 0);
+
+  const years = equityCurve.length / barsPerYear;
+  const cagrPct = years > 0 && finalEquity > 0
+    ? ((finalEquity / initialBalance) ** (1 / years) - 1) * 100
+    : 0;
+  const maxDrawdownPct = maxDrawdown(equityCurve);
 
   return {
     totalReturnPct: ((finalEquity - initialBalance) / initialBalance) * 100,
@@ -58,7 +93,14 @@ export function computeMetrics({ equityCurve, trades, initialBalance, barsPerYea
     avgWin: avg(wins),
     avgLoss: avg(losses),
     profitFactor: profitFactor(trades),
-    maxDrawdownPct: maxDrawdown(equityCurve),
+    maxDrawdownPct,
     sharpe: sharpeRatio(equityCurve, barsPerYear),
+    sortino: sortinoRatio(equityCurve, barsPerYear),
+    cagrPct,
+    calmar: maxDrawdownPct > 0 ? cagrPct / maxDrawdownPct : 0,
+    exposurePct: exposureBars != null && equityCurve.length
+      ? (exposureBars / equityCurve.length) * 100
+      : null,
+    longestLossStreak: longestLossStreak(trades),
   };
 }

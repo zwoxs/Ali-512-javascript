@@ -24,6 +24,7 @@ export async function runBacktest({ klines, cfg, strategy, symbol = "BACKTEST", 
 
   const warmupBars = strategy.warmup(btCfg);
   const equityCurve = [];
+  let exposureBars = 0; // piyasada (pozisyonda) gecirilen bar sayisi
 
   for (let i = warmupBars; i < klines.length; i++) {
     const candle = klines[i];
@@ -31,6 +32,7 @@ export async function runBacktest({ klines, cfg, strategy, symbol = "BACKTEST", 
     // Canli akisla ayni sozlesme: kapanmis mumlar + "anlik" fiyat (mumun kapanisi)
     await engine.step(klines.slice(0, i + 1), candle.close, simTime);
     equityCurve.push(portfolio.equity({ [symbol]: candle.close }));
+    if (portfolio.inPosition(symbol)) exposureBars++;
   }
 
   // Acik pozisyonu son fiyattan kapat
@@ -48,6 +50,7 @@ export async function runBacktest({ klines, cfg, strategy, symbol = "BACKTEST", 
     trades: portfolio.tradeLog,
     initialBalance: btCfg.paperBalance,
     barsPerYear,
+    exposureBars,
   });
 
   return { metrics, tradeLog: portfolio.tradeLog, equityCurve };

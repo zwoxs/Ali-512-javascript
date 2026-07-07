@@ -7,7 +7,7 @@
 // testte coken kombinasyon = asiri uyum; ona guvenmeyin.
 
 import { config, validateConfig } from "./config.js";
-import { fetchKlines } from "./exchange/market.js";
+import { fetchKlinesCached } from "./exchange/market.js";
 import { optimize, score } from "./core/optimizer.js";
 
 const symbol = (process.argv[2] || config.symbols[0]).toUpperCase();
@@ -30,7 +30,7 @@ async function main() {
   }
 
   console.log(`\nWalk-forward optimizasyon: ${symbol} ${interval} x${limit} mum | Strateji: ${strategyName}\n`);
-  const klines = await fetchKlines(symbol, interval, limit);
+  const klines = await fetchKlinesCached(symbol, interval, limit);
 
   const { top, results, trainBars, testBars } = await optimize({
     klines,

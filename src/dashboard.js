@@ -92,12 +92,16 @@ refresh(); setInterval(refresh, 5000);
 </body>
 </html>`;
 
-export function startDashboard(port, getStatus) {
+export function startDashboard(port, getStatus, getHealth = null) {
   if (!port) return null;
   const server = http.createServer((req, res) => {
     if (req.url === "/api/status") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(getStatus()));
+    } else if (req.url === "/api/health") {
+      // Izleme sistemleri (uptime kontrolu, k8s liveness vb.) icin
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(getHealth ? getHealth() : { status: "ok" }));
     } else {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(PAGE);

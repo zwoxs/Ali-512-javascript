@@ -62,6 +62,30 @@ export async function fetchLastPrice(symbol) {
   return parseFloat(data.price);
 }
 
+/**
+ * Disk onbellekli kline verisi - backtest/optimizasyon icin.
+ * Ayni veri 10 dk icinde tekrar istenirse API'ye gidilmez; optimizasyonda
+ * yuzlerce kosum tek indirmeyle beslenir, rate-limit riski sifirlanir.
+ */
+export async function fetchKlinesCached(symbol, interval, limit = 300, ttlMs = 600_000) {
+  const { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } = await import("node:fs");
+  const path = await import("node:path");
+  const dir = path.join(config.dataDir, "cache");
+  const file = path.join(dir, `${symbol}-${interval}-${limit}.json`);
+
+  if (existsSync(file) && Date.now() - statSync(file).mtimeMs < ttlMs) {
+    try {
+      return JSON.parse(readFileSync(file, "utf8"));
+    } catch {
+      // bozuk onbellek: yeniden indir
+    }
+  }
+  const klines = await fetchKlines(symbol, interval, limit);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(file, JSON.stringify(klines));
+  return klines;
+}
+
 /** Sembolun LOT_SIZE adim buyuklugunu getirir (miktar yuvarlama icin). */
 export async function fetchLotStep(symbol) {
   const url = `${config.marketBaseUrl}/api/v3/exchangeInfo?symbol=${symbol}`;

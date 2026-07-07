@@ -60,6 +60,37 @@ export class Portfolio {
     return pnl;
   }
 
+  /**
+   * Kismi satisi deftere isler: pozisyonun bir kismi kapanir, kalan devam eder.
+   * Giris komisyonu orantili paylastirilir. Gerceklesen K/Z dondurur.
+   */
+  recordPartialSell(symbol, fill) {
+    const pos = this.positions.get(symbol);
+    if (!pos) throw new Error(`${symbol} icin acik pozisyon yok.`);
+    if (fill.qty >= pos.qty) throw new Error("Kismi satis pozisyonun tamamini kapatamaz.");
+
+    const proceeds = fill.qty * fill.price - fill.fee;
+    const entryFeeShare = (pos.entryFee || 0) * (fill.qty / pos.qty);
+    const pnl = proceeds - (fill.qty * pos.entryPrice + entryFeeShare);
+
+    this.quote += proceeds;
+    pos.entryFee = (pos.entryFee || 0) - entryFeeShare;
+    pos.qty = parseFloat((pos.qty - fill.qty).toPrecision(12));
+    pos.partialDone = true;
+    this.realizedPnl += pnl;
+    this.tradeLog.push({
+      symbol,
+      entryPrice: pos.entryPrice,
+      exitPrice: fill.price,
+      qty: fill.qty,
+      pnl,
+      openedAt: pos.openedAt,
+      closedAt: fill.ts,
+      partial: true,
+    });
+    return pnl;
+  }
+
   /** Iz suren stop icin pozisyonun gordugu en yuksek fiyati gunceller. */
   updateHighWater(symbol, price) {
     const pos = this.positions.get(symbol);

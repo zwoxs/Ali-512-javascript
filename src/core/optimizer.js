@@ -31,6 +31,18 @@ const GRIDS = {
     stopLossPct: [1.5, 2, 3],
     takeProfitPct: [3, 4, 6],
   },
+  donchian: {
+    donchianEntry: [10, 20, 40],
+    donchianExit: [5, 10, 20],
+    stopLossPct: [1.5, 2, 3],
+    takeProfitPct: [4, 6, 10],
+  },
+  supertrend: {
+    supertrendPeriod: [7, 10, 14],
+    supertrendMult: [2, 3, 4],
+    stopLossPct: [1.5, 2, 3],
+    takeProfitPct: [4, 6, 10],
+  },
 };
 
 /** Kartezyen carpim: {a:[1,2], b:[3]} -> [{a:1,b:3},{a:2,b:3}] */
@@ -51,6 +63,7 @@ function isValidCombo(params, cfg) {
   const merged = { ...cfg, ...params };
   if (merged.emaFast >= merged.emaSlow) return false;
   if (merged.macdFast >= merged.macdSlow) return false;
+  if (merged.donchianExit >= merged.donchianEntry) return false;
   return true;
 }
 
