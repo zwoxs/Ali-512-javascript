@@ -21,15 +21,21 @@ için 21+; yoksa otomatik REST'e düşer).
 - 📣 **Sinyal modu**: `TRADE_MODE=signal` — işlem açmadan sadece Telegram/Discord'a sinyal gönderir
 - 🕐 **Borsa saati senkronizasyonu** + canlı modda başlangıçta **hesap doğrulaması**
 
-**Risk yönetimi**
-- 📏 **Risk bazlı boyutlama**: pozisyon büyüklüğü = riske edilen sermaye / stop mesafesi
-- 🌊 **ATR (volatiliteye uyumlu) stoplar**: `STOP_MODE=atr` ile stop/hedef, giriş anındaki piyasa oynaklığına göre belirlenir — sakin piyasada dar, dalgalı piyasada geniş
-- ✂️ **Kısmi kâr alma (scale-out)**: hedefin ilk kademesinde pozisyonun bir kısmı kapatılır, stop başabaşa çekilir — **kalan pozisyon artık zarar edemez**
-- 🔺 **Piramitleme (scale-in)**: kazanan pozisyona küçülen kademelerle ekleme; giriş fiyatı ağırlıklı ortalamayla güncellenir
-- 🧭 **Üst zaman dilimi trend filtresi**: `HTF_FILTER=true` ile düşüş trendinde AL sinyalleri engellenir
-- 📐 **ADX rejim filtresi**: `ADX_FILTER=true` ile trendsiz/testere piyasada işlem açılmaz — trend stratejilerinin kırıldığı ortamdan korunma
-- 🧺 **Portföy limitleri**: maks. eşzamanlı pozisyon sayısı + toplam maruziyet tavanı
-- 🛑 **İz süren stop, günlük zarar limiti, ardışık zarar soğuması**: üç bağımsız devre kesici
+**Zarar sınırlama (minimum kayıp)**
+- 🛑 **ACİL FREN (kill-switch)**: toplam sermaye zirveden `MAX_TOTAL_DRAWDOWN_PCT` düşerse bot yeni işlem açmayı **kalıcı olarak** durdurur (yeniden başlatmada da korunur) — en güçlü sermaye koruması
+- 📏 **Risk bazlı boyutlama**: işlem başına sermayenin sadece %1'i riske edilir (ayarlanabilir)
+- ⚖️ **Ödül/risk zorlaması**: `MIN_RR` ile TP/SL oranı düşükse bot hiç başlamaz
+- 🌊 **ATR (volatiliteye uyumlu) stoplar** + **volatilite bekçisi**: çılgın piyasada giriş engellenir
+- ⏳ **Zaman aşımı çıkışı**: N mumdur kârsız bekleyen "ölü" pozisyon kapatılır
+- 🧭 **HTF trend filtresi** + 📐 **ADX rejim filtresi**: düşüş trendinde ve testere piyasada işlem yok
+- 🧺 **Portföy limitleri**: maks. pozisyon sayısı + maruziyet tavanı + minimum emir tutarı
+- ⛔ **Günlük zarar limiti + ardışık zarar soğuması**: kötü günde bot kendini durdurur
+
+**Kâr koruma (maksimum kazanç kilitleme)**
+- 🔒 **Erken başabaş stopu**: kâr `BREAKEVEN_TRIGGER_PCT`'ye bir kez ulaşınca stop girişe çekilir — **pozisyon matematiksel olarak artık zarar edemez**
+- 🕯️ **Chandelier stop** (`TRAILING_MODE=atr`): zirveden N×ATR sarkınca kâr kilitlenir — trendin nefes almasına izin verir, dönüşte kârı bırakmaz
+- ✂️ **Kısmi kâr alma (scale-out)**: ilk hedefte pozisyonun yarısı nakde döner, kalan koşar
+- 🔺 **Piramitleme (scale-in)**: kazanan pozisyona küçülen kademelerle ekleme
 - 🧮 **Tam tur muhasebe**: K/Z hesabına giriş + çıkış komisyonu ve kayma dahildir
 
 **Araştırma araçları**
@@ -44,15 +50,29 @@ için 21+; yoksa otomatik REST'e düşer).
 - 💾 **Atomik durum kalıcılığı**: yeniden başlatmada pozisyonlar diskten kurtarılır
 - 📱 **Telegram + Discord**: işlem bildirimleri, **günlük özet raporu**, ardışık hata alarmı
 - 🐳 **Docker + docker-compose + pm2** dağıtım dosyaları, **GitHub Actions CI**
-- ✅ **48 birim/entegrasyon testi** (`npm test`)
+- ✅ **55 birim/entegrasyon testi** (`npm test`)
 
 ## Kurulum
 
 ```bash
 node --version        # >= 18 (WebSocket icin >= 21 onerilir)
 cp .env.example .env  # ayarlari duzenleyin
-npm test              # 32 testin gectigini dogrulayin
+npm test              # 55 testin gectigini dogrulayin
 ```
+
+### Hazır profiller (önerilen başlangıç)
+
+```bash
+# Guvenli: tum koruma katmanlari acik, kucuk sermaye (2-10k TRY) icin
+cp profiles/guvenli.env .env
+
+# Dengeli: koruma + buyume dengesi, kismi kar + piramitleme birlikte
+cp profiles/dengeli.env .env
+```
+
+Güvenli profil felsefesi: **az ama seçici işlem** (HTF + ADX + volatilite filtresi),
+işlem başına %1 risk, kâr görülür görülmez başabaş kilidi, chandelier ile kâr takibi,
+%12 toplam düşüşte acil fren. Kârı garanti etmez — kaybı sınırlar ve kazancı korur.
 
 ## Önerilen iş akışı
 
@@ -122,7 +142,7 @@ src/
 ├── notifier.js               # Telegram + Discord bildirimleri (hata botu durdurmaz)
 ├── report.js                 # Islem gunlugunden HTML performans raporu (npm run report)
 ├── dashboard.js              # Web paneli: ozsermaye + mum grafigi + islem isaretleri
-├── indicators.js             # SMA, EMA, RSI, MACD, Bollinger, ATR, Donchian, SuperTrend
+├── indicators.js             # SMA, EMA, RSI, MACD, Bollinger, ATR, Donchian, SuperTrend, ADX
 ├── strategies/               # Strateji kayit defteri + 5 strateji (ortak sozlesme)
 ├── core/
 │   ├── engine.js             # Karar dongusu - backtest ve canli icin TEK kod yolu
@@ -138,7 +158,8 @@ src/
     ├── market.js             # REST veri - yeniden deneme, rate-limit, disk onbellegi
     ├── brokers.js            # PaperBroker / LiveBroker (ayni arayuz) + LOT_SIZE
     └── binanceTr.js          # Binance TR Open API imzali istekler + saat senkronu
-test/                         # 48 birim + entegrasyon testi (node:test)
+test/                         # 55 birim + entegrasyon testi (node:test)
+profiles/                     # Hazir .env profilleri: guvenli.env, dengeli.env
 .github/workflows/ci.yml      # Her push'ta sozdizimi + test kosan CI
 Dockerfile / docker-compose.yml / ecosystem.config.cjs
 ```
@@ -162,6 +183,11 @@ Tam liste `.env.example` içinde. Öne çıkanlar:
 | `PYRAMID_MAX_ADDONS` | `0` | Piramit kademe sayısı (0 = kapalı) |
 | `ADX_FILTER` | `false` | Trendsiz piyasada işlem engelleme |
 | `MAX_OPEN_POSITIONS` | `0` | Eşzamanlı pozisyon limiti (0 = sınırsız) |
+| `MAX_TOTAL_DRAWDOWN_PCT` | `0` | **Acil fren**: zirveden bu kadar düşüşte bot durur |
+| `BREAKEVEN_TRIGGER_PCT` | `0` | Erken başabaş kilidi eşiği |
+| `TRAILING_MODE` | `percent` | `atr` = chandelier kâr kilitleme |
+| `MAX_HOLD_CANDLES` | `0` | Kârsız pozisyon zaman aşımı |
+| `MIN_RR` | `0` | Minimum ödül/risk oranı zorlaması |
 | `DISCORD_WEBHOOK_URL` | — | Discord bildirimleri (isteğe bağlı) |
 | `HTF_FILTER` | `false` | Üst zaman dilimi trend filtresi |
 | `TRAILING_STOP_PCT` | `0` | İz süren stop (0 = kapalı) |

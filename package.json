@@ -1,7 +1,7 @@
 {
   "name": "binance-tr-coin-bot",
-  "version": "5.0.0",
-  "description": "Binance TR icin 5 stratejili, piramitlemeli, ADX rejim filtreli, Monte Carlo analizli, WebSocket beslemeli alim-satim botu (varsayilan: paper trading)",
+  "version": "6.0.0",
+  "description": "Binance TR icin sermaye koruma odakli alim-satim botu: acil fren, chandelier stop, erken basabas, 5 strateji, Monte Carlo analizi (varsayilan: paper trading)",
   "type": "module",
   "main": "src/index.js",
   "scripts": {

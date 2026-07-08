@@ -14,6 +14,25 @@ export class RiskManager {
     this.consecutiveLosses = 0;
     this.cooldownUntil = 0;
     this.dailyLimitHit = false;
+    this.equityPeak = 0;      // acil fren icin toplam sermaye zirvesi
+    this.killSwitch = false;  // devreye girerse yeni islem acilmaz (kalicidir)
+  }
+
+  /**
+   * ACIL FREN: toplam sermayeyi izler. Zirveden maxTotalDrawdownPct kadar
+   * dususte kill-switch devreye girer ve KALICI olarak yeni islem engellenir
+   * (yeniden baslatmada da korunur - manuel inceleme gerektirir).
+   * @returns {boolean} bu cagrida yeni tetiklendiyse true
+   */
+  updateEquity(equity) {
+    if (equity > this.equityPeak) this.equityPeak = equity;
+    if (this.killSwitch || this.cfg.maxTotalDrawdownPct <= 0 || this.equityPeak <= 0) return false;
+    const drawdownPct = ((this.equityPeak - equity) / this.equityPeak) * 100;
+    if (drawdownPct >= this.cfg.maxTotalDrawdownPct) {
+      this.killSwitch = true;
+      return true;
+    }
+    return false;
   }
 
   _rollDay() {
@@ -28,6 +47,10 @@ export class RiskManager {
   /** Yeni pozisyon acilabilir mi? Engellenmisse neden dondurur, serbestse null. */
   canOpen() {
     this._rollDay();
+    if (this.killSwitch) {
+      return `ACIL FREN AKTIF: toplam sermaye zirveden %${this.cfg.maxTotalDrawdownPct} dustu. ` +
+             `Stratejinizi gozden gecirin; devam icin data/state.json'daki killSwitch'i sifirlayin.`;
+    }
     if (this.dailyLimitHit) {
       return `Gunluk zarar limiti asildi (%${this.cfg.maxDailyLossPct}). Bugun yeni islem yok.`;
     }
@@ -94,7 +117,21 @@ export class RiskManager {
         return `Kar al (%${fromEntry.toFixed(2)})`;
       }
     }
-    if (this.cfg.trailingStopPct > 0) {
+    // Erken basabas: kar esigi bir kez gorulduyse pozisyon artik zarara donemez
+    if (
+      this.cfg.breakevenTriggerPct > 0 &&
+      pos.highWater >= pos.entryPrice * (1 + this.cfg.breakevenTriggerPct / 100) &&
+      price <= pos.entryPrice
+    ) {
+      return `Basabas stop: %${this.cfg.breakevenTriggerPct} kar goruldu, giris fiyati korundu`;
+    }
+    // Iz suren stop: percent = sabit yuzde | atr = chandelier (zirve - N x ATR)
+    if (this.cfg.trailingMode === "atr" && pos.entryAtr > 0) {
+      const stopPrice = pos.highWater - pos.entryAtr * this.cfg.chandelierMult;
+      if (price <= stopPrice && pos.highWater > pos.entryPrice) {
+        return `Chandelier stop: zirve ${pos.highWater.toFixed(4)} - ${this.cfg.chandelierMult}xATR (kar kilitlendi)`;
+      }
+    } else if (this.cfg.trailingStopPct > 0) {
       const fromHigh = ((price - pos.highWater) / pos.highWater) * 100;
       if (fromHigh <= -this.cfg.trailingStopPct && price > pos.entryPrice) {
         return `Iz suren stop: zirveden %${(-fromHigh).toFixed(2)} geri cekilme (kar kilitlendi)`;

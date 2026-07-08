@@ -95,6 +95,15 @@ export const config = {
   stopLossPct: num("STOP_LOSS_PCT", 2),
   takeProfitPct: num("TAKE_PROFIT_PCT", 4),
   trailingStopPct: num("TRAILING_STOP_PCT", 0), // 0 = kapali
+  // Iz suren stop modu: percent = sabit yuzde | atr = chandelier (zirve - N x ATR)
+  trailingMode: str("TRAILING_MODE", "percent").toLowerCase(),
+  chandelierMult: num("CHANDELIER_MULT", 3),
+  // Erken basabas: kar bu yuzdeye ulasinca stop giris fiyatina cekilir (0 = kapali)
+  breakevenTriggerPct: num("BREAKEVEN_TRIGGER_PCT", 0),
+  // Zaman asimi cikisi: bu kadar mumdur KARSIZ bekleyen pozisyon kapatilir (0 = kapali)
+  maxHoldCandles: num("MAX_HOLD_CANDLES", 0),
+  // Odul/risk zorlamasi: TP mesafesi / SL mesafesi bu oranin altindaysa bot baslamaz (0 = kapali)
+  minRr: num("MIN_RR", 0),
   atrPeriod: num("ATR_PERIOD", 14),
   atrStopMult: num("ATR_STOP_MULT", 2),
   atrTpMult: num("ATR_TP_MULT", 3),
@@ -122,6 +131,16 @@ export const config = {
   // Portfoy seviyesi limitler (0 = kapali)
   maxOpenPositions: num("MAX_OPEN_POSITIONS", 0),
   maxExposurePct: num("MAX_EXPOSURE_PCT", 0), // pozisyonlardaki sermaye / toplam deger
+
+  // ACIL FREN: toplam sermaye zirvesinden bu kadar % dusulurse bot yeni islem ACMAZ
+  // (0 = kapali). Devreye girerse manuel inceleme gerekir - en guclu zarar sinirlayici.
+  maxTotalDrawdownPct: num("MAX_TOTAL_DRAWDOWN_PCT", 0),
+
+  // Volatilite bekcisi: ATR/fiyat orani bu yuzdenin ustundeyse giris yapilmaz (0 = kapali)
+  maxEntryAtrPct: num("MAX_ENTRY_ATR_PCT", 0),
+
+  // Minimum emir tutari (TRY): komisyonun kari yedigi kucuk emirleri engeller (0 = kapali)
+  minOrderNotional: num("MIN_ORDER_NOTIONAL", 0),
 
   // Devre kesiciler
   maxDailyLossPct: num("MAX_DAILY_LOSS_PCT", 5),      // gunluk zarar limiti (baslangic sermayesine gore %)
@@ -185,6 +204,18 @@ export function validateConfig(cfg = config) {
       errors.push("PYRAMID_SIZE_FACTOR 0-1 arasinda olmali (kademeler kuculmeli).");
     if (cfg.pyramidTriggerPct <= 0)
       errors.push("PYRAMID_TRIGGER_PCT pozitif olmali.");
+  }
+  if (!["percent", "atr"].includes(cfg.trailingMode))
+    errors.push("TRAILING_MODE 'percent' veya 'atr' olmali.");
+  if (cfg.minRr > 0) {
+    const rr = cfg.stopMode === "atr"
+      ? cfg.atrTpMult / cfg.atrStopMult
+      : cfg.takeProfitPct / cfg.stopLossPct;
+    if (rr < cfg.minRr)
+      errors.push(
+        `Odul/risk orani ${rr.toFixed(2)} < MIN_RR ${cfg.minRr}. ` +
+        `Hedefi buyutun veya stopu daraltin - dusuk odul/risk uzun vadede kaybettirir.`
+      );
   }
   return errors;
 }

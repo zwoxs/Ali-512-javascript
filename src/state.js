@@ -25,6 +25,8 @@ export function saveState(portfolio, risk) {
       consecutiveLosses: risk.consecutiveLosses,
       cooldownUntil: risk.cooldownUntil,
       dailyLimitHit: risk.dailyLimitHit,
+      equityPeak: risk.equityPeak,
+      killSwitch: risk.killSwitch, // acil fren yeniden baslatmada da korunur
     },
   };
   if (!existsSync(config.dataDir)) mkdirSync(config.dataDir, { recursive: true });

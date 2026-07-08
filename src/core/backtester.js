@@ -31,7 +31,9 @@ export async function runBacktest({ klines, cfg, strategy, symbol = "BACKTEST", 
     simTime = candle.closeTime;
     // Canli akisla ayni sozlesme: kapanmis mumlar + "anlik" fiyat (mumun kapanisi)
     await engine.step(klines.slice(0, i + 1), candle.close, simTime);
-    equityCurve.push(portfolio.equity({ [symbol]: candle.close }));
+    const equity = portfolio.equity({ [symbol]: candle.close });
+    equityCurve.push(equity);
+    risk.updateEquity(equity); // acil fren backtest'te de ayni sekilde calisir
     if (portfolio.inPosition(symbol)) exposureBars++;
   }
 

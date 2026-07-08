@@ -36,9 +36,13 @@ export class Engine {
     if (!this.silent) log.trade(record);
   }
 
-  /** ATR modunda gecerli volatiliteyi hesaplar; gerek yoksa null. */
+  /** Guncel ATR degeri; hicbir tuketici yoksa hesaplanmaz (null). */
   _currentAtr(candles) {
-    if (this.cfg.stopMode !== "atr") return null;
+    const needed =
+      this.cfg.stopMode === "atr" ||
+      this.cfg.trailingMode === "atr" ||
+      this.cfg.maxEntryAtrPct > 0;
+    if (!needed) return null;
     const values = atr(candles, this.cfg.atrPeriod);
     return values.length ? values[values.length - 1] : null;
   }
@@ -71,7 +75,18 @@ export class Engine {
     if (!lastClosed || lastClosed.closeTime === this.lastCandleTime) return;
     this.lastCandleTime = lastClosed.closeTime;
 
-    // 2a) Piramitleme: kazanan pozisyona kademeli ekleme (mum basina en fazla bir kez)
+    // 2a) Zaman asimi cikisi: uzun suredir KARSIZ bekleyen "olu" pozisyonu kapat.
+    // Sermayeyi bagli tutan ve stop riskini tasiyan pozisyon, firsata donusmuyorsa cikilir.
+    if (pos && this.cfg.maxHoldCandles > 0) {
+      pos.candlesHeld = (pos.candlesHeld || 0) + 1;
+      const fromEntry = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
+      if (pos.candlesHeld >= this.cfg.maxHoldCandles && fromEntry <= 0) {
+        await this._sell(currentPrice, `Zaman asimi: ${pos.candlesHeld} mumdur karsiz pozisyon`, ts);
+        return;
+      }
+    }
+
+    // 2b) Piramitleme: kazanan pozisyona kademeli ekleme (mum basina en fazla bir kez)
     if (pos && this.cfg.pyramidMaxAddons > 0 && (pos.addons || 0) < this.cfg.pyramidMaxAddons) {
       const lastAdd = pos.lastAddPrice || pos.entryPrice;
       if (currentPrice >= lastAdd * (1 + this.cfg.pyramidTriggerPct / 100)) {
@@ -110,6 +125,17 @@ export class Engine {
       if (this.cfg.adxFilter && !isTrendingMarket(closedCandles, this.cfg)) {
         log.debug(`${this.symbol} AL sinyali ADX filtresine takildi: piyasa trendsiz.`);
         return;
+      }
+      // Volatilite bekcisi: asiri oynak piyasada stoplar anlamsizlasir - girme
+      if (this.cfg.maxEntryAtrPct > 0) {
+        const atrValue = this._currentAtr(closedCandles);
+        if (atrValue && (atrValue / currentPrice) * 100 > this.cfg.maxEntryAtrPct) {
+          if (!this.silent) log.warn(
+            `${this.symbol} AL sinyali volatilite bekcisine takildi: ` +
+            `ATR %${((atrValue / currentPrice) * 100).toFixed(2)} > %${this.cfg.maxEntryAtrPct}`
+          );
+          return;
+        }
       }
       await this._buy(currentPrice, reason, ts, closedCandles);
     } else if (signal === "SELL" && this.portfolio.inPosition(this.symbol)) {
@@ -151,6 +177,13 @@ export class Engine {
     );
     if (qty <= 0) {
       if (!this.silent) log.warn(`${this.symbol}: alim icin yeterli bakiye yok.`);
+      return;
+    }
+    // Minimum emir tutari: komisyonun kari yedigi kucuk emirleri engelle
+    if (this.cfg.minOrderNotional > 0 && qty * price < this.cfg.minOrderNotional) {
+      if (!this.silent) log.warn(
+        `${this.symbol}: emir tutari ${(qty * price).toFixed(2)} TRY < minimum ${this.cfg.minOrderNotional} TRY - atlandi.`
+      );
       return;
     }
     const fill = await this.broker.buy(this.symbol, qty, price);

@@ -35,6 +35,7 @@ export class Portfolio {
       openedAt: fill.ts,
       addons: 0,
       lastAddPrice: fill.price,
+      candlesHeld: 0,
     });
   }
 

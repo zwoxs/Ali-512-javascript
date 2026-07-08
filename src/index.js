@@ -170,8 +170,15 @@ async function main() {
       }
     }
     if (Object.keys(latestPrices).length) {
-      equityHistory.push({ t: Date.now(), equity: portfolio.equity(latestPrices) });
+      const equity = portfolio.equity(latestPrices);
+      equityHistory.push({ t: Date.now(), equity });
       if (equityHistory.length > 1000) equityHistory.shift();
+      // Acil fren kontrolu: zirveden asiri dususte tum yeni islemler durur
+      if (risk.updateEquity(equity)) {
+        saveState(portfolio, risk);
+        log.error(`ACIL FREN DEVREDE: sermaye zirveden %${config.maxTotalDrawdownPct} dustu. Yeni islem acilmayacak.`);
+        await notify(`🛑 ACIL FREN: toplam sermaye zirveden %${config.maxTotalDrawdownPct} dustu. Bot yeni islem ACMAYACAK - kontrol edin.`);
+      }
     }
     // Her 10 turda bir ozet yaz (log kirliligini onle)
     if (tick % 10 === 0 && Object.keys(latestPrices).length) {
