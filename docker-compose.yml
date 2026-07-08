@@ -1,0 +1,19 @@
+services:
+  bot:
+    build: .
+    container_name: binance-tr-bot
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    ports:
+      # Izleme paneli (DASHBOARD_PORT=8080 ise). Sadece localhost'a acilir.
+      - "127.0.0.1:8080:8080"
+    # Panel konteyner disina cikabilsin diye tum arayuzlere baglanmasi gerekirse
+    # DASHBOARD_HOST kullanmak yerine ters proxy onerilir.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

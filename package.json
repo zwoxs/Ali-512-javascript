@@ -1,0 +1,20 @@
+{
+  "name": "binance-tr-coin-bot",
+  "version": "11.0.0",
+  "description": "Binance TR icin fuzz-dogrulanmis, borsa-filtre uyumlu, haber-duyarlilikli alim-satim botu: odeme-gucu invaryanti, MIN_NOTIONAL uyumu, anti-martingale risk, durum dogrulamasi, hesap mutabakati (varsayilan: paper trading)",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "backtest": "node src/backtest.js",
+    "optimize": "node src/optimize.js",
+    "report": "node src/report.js",
+    "doctor": "node src/doctor.js",
+    "news": "node src/news.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
