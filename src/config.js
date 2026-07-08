@@ -94,6 +94,12 @@ export const config = {
   positionPct: num("POSITION_PCT", 25),        // percent modu: bakiyenin %'si
   riskPerTradePct: num("RISK_PER_TRADE_PCT", 1), // risk modu: islem basina riske edilen sermaye %'si
 
+  // Anti-martingale dinamik risk: dususteyken pozisyon boyutunu otomatik kucultur
+  // (kazanirken normal, kaybederken temkinli). Sermaye korumanin profesyonel yolu.
+  dynamicRisk: bool("DYNAMIC_RISK", false),
+  dynamicRiskRefDd: num("DYNAMIC_RISK_REF_DD", 10), // bu dususte (%) boyut tabana iner
+  dynamicRiskFloor: num("DYNAMIC_RISK_FLOOR", 0.5), // asgari boyut carpani (0-1)
+
   // Cikis kurallari
   // percent = sabit yuzde | atr = volatiliteye uyumlu (ATR carpani) stop/hedef
   stopMode: str("STOP_MODE", "percent").toLowerCase(),
@@ -272,6 +278,8 @@ export function validateConfig(cfg = config) {
     errors.push("CONFLUENCE_MIN_VOTES en az 1 olmali.");
   if (cfg.volumeFilter && (cfg.volumeMinRatio <= 0 || cfg.volumeAvgPeriod < 2))
     errors.push("VOLUME_MIN_RATIO pozitif ve VOLUME_AVG_PERIOD en az 2 olmali.");
+  if (cfg.dynamicRisk && (cfg.dynamicRiskFloor <= 0 || cfg.dynamicRiskFloor > 1))
+    errors.push("DYNAMIC_RISK_FLOOR 0-1 arasinda olmali (or. 0.5).");
   if (cfg.newsFilter) {
     if (!["cryptopanic", "rss"].includes(cfg.newsSource))
       errors.push("NEWS_SOURCE 'cryptopanic' veya 'rss' olmali.");

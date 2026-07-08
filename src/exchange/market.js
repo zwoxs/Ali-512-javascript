@@ -94,3 +94,11 @@ export async function fetchLotStep(symbol) {
   const lot = filters.find((f) => f.filterType === "LOT_SIZE");
   return lot ? parseFloat(lot.stepSize) : 0.000001;
 }
+
+/** Sembolun tum emir filtrelerini getirir (LOT_SIZE, MIN_NOTIONAL, PRICE_FILTER). */
+export async function fetchSymbolFilters(symbol) {
+  const { parseFilters } = await import("./filters.js");
+  const url = `${config.marketBaseUrl}/api/v3/exchangeInfo?symbol=${symbol}`;
+  const data = await fetchWithRetry(url);
+  return parseFilters(data.symbols?.[0]);
+}

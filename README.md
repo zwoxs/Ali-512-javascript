@@ -41,7 +41,10 @@ için 21+; yoksa otomatik REST'e düşer).
 - 🔗 **Korelasyon koruması**: açık pozisyonla birlikte hareket eden sembolde (örn. BTC↔ETH) ikinci pozisyon açılmaz — aynı riske iki kez girilmez
 - 🧪 **Veri sağlığı bekçisi**: tek turda aşırı fiyat sıçraması (veri aksaklığı) o turu iptal eder — bozuk fiyatla stop/alım tetiklenmez
 - ⛔ **Günlük zarar limiti + ardışık zarar soğuması**: kötü günde bot kendini durdurur
-- 🧷 **Ödeme-gücü invaryantı**: pozisyon boyutu komisyon+kayma çarpımsal tamponuyla hesaplanır; emir kötü fiyattan dolsa bile **bakiye asla eksiye düşmez** (uçtan uca testli)
+- 🧷 **Ödeme-gücü invaryantı**: pozisyon boyutu komisyon+kayma çarpımsal tamponuyla hesaplanır; emir kötü fiyattan dolsa bile **bakiye asla eksiye düşmez**
+- 🎰 **Anti-martingale dinamik risk**: düşüşteyken pozisyon boyutu otomatik küçülür (`DYNAMIC_RISK`) — kazanırken normal, kaybederken temkinli
+- ✅ **Borsa filtre uyumu**: canlı emirler `LOT_SIZE` + `MIN_NOTIONAL` + min. miktar filtrelerine uydurulur — borsa reddi (ve gereksiz devre kesici) önlenir
+- 🛡️ **Durum doğrulaması**: bozuk/NaN `state.json` yüklenmez (NaN karşılaştırmaları stop'ları sessizce devre dışı bırakır) — bot temiz başlar
 - 🔐 **Güvenli emir politikası**: canlı emir belirsizlikte kör tekrarlanmaz (`ORDER_RETRY=false` varsayılan) — çift dolum riski yerine mutabakat + insan kararı
 
 **Kâr koruma (maksimum kazanç kilitleme)**
@@ -65,14 +68,14 @@ için 21+; yoksa otomatik REST'e düşer).
 - 📱 **Telegram + Discord**: işlem bildirimleri, **günlük özet raporu**, ardışık hata alarmı
 - 🪵 **JSON log formatı** (`LOG_FORMAT=json`): Loki/ELK/CloudWatch gibi log toplayıcılara hazır
 - 🐳 **Docker + docker-compose + pm2** dağıtım dosyaları, **GitHub Actions CI**
-- ✅ **87 birim/entegrasyon testi** (`npm test`) — ödeme-gücü invaryantı dahil (bakiye asla eksiye düşmez)
+- ✅ **97 birim/entegrasyon + fuzz testi** (`npm test`) — **~400 rastgele senaryoda ~80.000 motor adımı** invaryant kontrolüyle (bakiye asla negatif, defter tutarlı, NaN yok)
 
 ## Kurulum
 
 ```bash
 node --version        # >= 18 (WebSocket icin >= 21 onerilir)
 cp .env.example .env  # ayarlari duzenleyin
-npm test              # 87 testin gectigini dogrulayin
+npm test              # 97 testin gectigini dogrulayin (fuzz dahil)
 npm run doctor        # ortam tanilamasi (API erisimi, saat, izinler)
 ```
 
@@ -179,9 +182,10 @@ src/
 └── exchange/
     ├── wsFeed.js             # WebSocket kline akisi + otomatik REST fallback
     ├── market.js             # REST veri - yeniden deneme, rate-limit, disk onbellegi
-    ├── brokers.js            # PaperBroker / LiveBroker (ayni arayuz) + LOT_SIZE
+    ├── brokers.js            # PaperBroker / LiveBroker (ayni arayuz)
+    ├── filters.js            # Borsa emir filtresi uyumu (LOT_SIZE/MIN_NOTIONAL)
     └── binanceTr.js          # Binance TR Open API imzali istekler + saat senkronu
-test/                         # 87 birim + entegrasyon testi (node:test)
+test/                         # 97 birim + entegrasyon + fuzz testi (node:test)
 profiles/                     # Hazir .env profilleri: guvenli.env, dengeli.env
 .github/workflows/ci.yml      # Her push'ta sozdizimi + test kosan CI
 Dockerfile / docker-compose.yml / ecosystem.config.cjs

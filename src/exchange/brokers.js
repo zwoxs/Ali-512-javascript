@@ -1,7 +1,8 @@
 import { config } from "../config.js";
 import { log } from "../logger.js";
 import { placeMarketOrder, makeClientOrderId } from "./binanceTr.js";
-import { fetchLotStep } from "./market.js";
+import { fetchSymbolFilters } from "./market.js";
+import { validateOrder } from "./filters.js";
 
 /** Miktari borsa adim buyuklugune (LOT_SIZE) asagi yuvarlar. */
 export function roundToStep(qty, step) {
@@ -40,19 +41,19 @@ export class PaperBroker {
 export class LiveBroker {
   constructor(cfg = config) {
     this.cfg = cfg;
-    this.lotSteps = new Map();
+    this.filters = new Map();
   }
 
-  async _step(symbol) {
-    if (!this.lotSteps.has(symbol)) {
+  async _getFilters(symbol) {
+    if (!this.filters.has(symbol)) {
       try {
-        this.lotSteps.set(symbol, await fetchLotStep(symbol));
+        this.filters.set(symbol, await fetchSymbolFilters(symbol));
       } catch (err) {
-        log.warn(`${symbol} LOT_SIZE alinamadi (${err.message}); 6 ondalik varsayiliyor.`);
-        this.lotSteps.set(symbol, 0.000001);
+        log.warn(`${symbol} borsa filtreleri alinamadi (${err.message}); guvenli varsayilanlar.`);
+        this.filters.set(symbol, { stepSize: 0.000001, minQty: 0, minNotional: 0, tickSize: 0 });
       }
     }
-    return this.lotSteps.get(symbol);
+    return this.filters.get(symbol);
   }
 
   /**
@@ -84,17 +85,24 @@ export class LiveBroker {
   }
 
   async buy(symbol, qty, price) {
-    const roundedQty = roundToStep(qty, await this._step(symbol));
-    if (roundedQty <= 0) {
-      log.warn(`${symbol}: yuvarlama sonrasi miktar sifir - emir gonderilmedi.`);
+    const filters = await this._getFilters(symbol);
+    const v = validateOrder({ qty, price, filters });
+    if (!v.ok) {
+      log.warn(`${symbol} ALIM borsa filtresine takildi: ${v.reason} - emir gonderilmedi.`);
       return null;
     }
-    return this._send(symbol, "BUY", roundedQty, price);
+    return this._send(symbol, "BUY", v.qty, price);
   }
 
   async sell(symbol, qty, price) {
-    const roundedQty = roundToStep(qty, await this._step(symbol));
-    if (roundedQty <= 0) return null;
+    const filters = await this._getFilters(symbol);
+    // Satista MIN_NOTIONAL ihlali olsa bile pozisyondan CIKMAK onceliklidir:
+    // sadece adim yuvarlamasi uygulanir, minNotional/minQty veto edilmez.
+    const roundedQty = roundToStep(qty, filters.stepSize);
+    if (roundedQty <= 0) {
+      log.warn(`${symbol}: yuvarlama sonrasi satis miktari sifir - emir gonderilmedi.`);
+      return null;
+    }
     return this._send(symbol, "SELL", roundedQty, price);
   }
 }

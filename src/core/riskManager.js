@@ -80,6 +80,20 @@ export class RiskManager {
   }
 
   /**
+   * Anti-martingale risk carpani: zirveden dususte pozisyon boyutunu kucultur.
+   * Zirvede 1, DYNAMIC_RISK_REF_DD dususte DYNAMIC_RISK_FLOOR'a lineer iner.
+   * @returns {number} 0-1 arasi carpan
+   */
+  riskMultiplier(equity) {
+    if (!this.cfg.dynamicRisk || this.equityPeak <= 0 || equity >= this.equityPeak) return 1;
+    const ddPct = ((this.equityPeak - equity) / this.equityPeak) * 100;
+    const ref = this.cfg.dynamicRiskRefDd > 0 ? this.cfg.dynamicRiskRefDd : 10;
+    const floor = Math.min(Math.max(this.cfg.dynamicRiskFloor, 0), 1);
+    const scaled = 1 - (ddPct / ref) * (1 - floor);
+    return Math.min(1, Math.max(floor, scaled));
+  }
+
+  /**
    * Alinacak miktari hesaplar.
    * percent modu: bakiyenin sabit yuzdesi.
    * risk modu   : islem basina riske edilen sermaye / stop mesafesi
@@ -98,6 +112,7 @@ export class RiskManager {
     } else {
       budget = quoteBalance * (this.cfg.positionPct / 100);
     }
+    budget *= this.riskMultiplier(equity);     // anti-martingale kucultme
     budget = Math.min(budget, quoteBalance); // asla bakiyeden fazlasi degil
     // Tampon: worst-case maliyet = qty * price * costMultiplier <= budget
     const effPrice = price * this.costMultiplier();

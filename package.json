@@ -1,7 +1,7 @@
 {
   "name": "binance-tr-coin-bot",
-  "version": "10.0.0",
-  "description": "Binance TR icin haber-duyarlilikli, canli-islem guvenilirlikli, odeme-gucu invaryantli alim-satim botu: bakiye asla eksiye dusmez, hesap mutabakati, guvenli emir politikasi, haber filtresi, konsensus stratejisi (varsayilan: paper trading)",
+  "version": "11.0.0",
+  "description": "Binance TR icin fuzz-dogrulanmis, borsa-filtre uyumlu, haber-duyarlilikli alim-satim botu: odeme-gucu invaryanti, MIN_NOTIONAL uyumu, anti-martingale risk, durum dogrulamasi, hesap mutabakati (varsayilan: paper trading)",
   "type": "module",
   "main": "src/index.js",
   "scripts": {

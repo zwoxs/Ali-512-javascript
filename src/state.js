@@ -35,24 +35,60 @@ export function saveState(portfolio, risk) {
   renameSync(tmp, STATE_FILE);
 }
 
+const isFiniteNum = (v) => typeof v === "number" && Number.isFinite(v);
+
+/**
+ * Kayitli durumu dogrular. Bozuk/eksik veri (NaN, undefined) muhasebeyi zehirler
+ * ve NaN karsilastirmalari stop'lari SESSIZCE devre disi birakir - bu yuzden
+ * gecersiz durum YUKLENMEZ, bot temiz baslar. "Hata yapma luksu yok" invaryanti.
+ * @returns {{ok: boolean, reason?: string}}
+ */
+export function validateState(state) {
+  if (!state || typeof state !== "object") return { ok: false, reason: "durum nesnesi degil" };
+  if (!isFiniteNum(state.quote) || state.quote < 0)
+    return { ok: false, reason: `gecersiz bakiye: ${state.quote}` };
+  for (const [k, v] of [["trades", state.trades], ["wins", state.wins], ["realizedPnl", state.realizedPnl]]) {
+    if (v != null && !isFiniteNum(v)) return { ok: false, reason: `gecersiz ${k}: ${v}` };
+  }
+  for (const [symbol, pos] of Object.entries(state.positions || {})) {
+    if (!pos || !isFiniteNum(pos.qty) || pos.qty <= 0)
+      return { ok: false, reason: `${symbol} gecersiz miktar: ${pos?.qty}` };
+    if (!isFiniteNum(pos.entryPrice) || pos.entryPrice <= 0)
+      return { ok: false, reason: `${symbol} gecersiz giris fiyati: ${pos?.entryPrice}` };
+  }
+  if (state.risk) {
+    for (const key of ["dailyPnl", "cooldownUntil", "equityPeak", "consecutiveLosses"]) {
+      const v = state.risk[key];
+      if (v != null && !isFiniteNum(v)) return { ok: false, reason: `risk.${key} gecersiz: ${v}` };
+    }
+  }
+  return { ok: true };
+}
+
 export function loadState(portfolio, risk) {
   if (!existsSync(STATE_FILE)) return false;
+  let state;
   try {
-    const state = JSON.parse(readFileSync(STATE_FILE, "utf8"));
-    if (state.tradeMode !== config.tradeMode) {
-      log.warn(`Kayitli durum '${state.tradeMode}' moduna ait, su anki mod '${config.tradeMode}' - durum yuklenmedi.`);
-      return false;
-    }
-    portfolio.quote = state.quote;
-    portfolio.positions = new Map(Object.entries(state.positions || {}));
-    portfolio.trades = state.trades || 0;
-    portfolio.wins = state.wins || 0;
-    portfolio.realizedPnl = state.realizedPnl || 0;
-    Object.assign(risk, state.risk || {});
-    log.info(`Durum geri yuklendi (${state.savedAt}): ${portfolio.positions.size} acik pozisyon, bakiye ${portfolio.quote.toFixed(2)} TRY`);
-    return true;
+    state = JSON.parse(readFileSync(STATE_FILE, "utf8"));
   } catch (err) {
-    log.error(`Durum dosyasi okunamadi: ${err.message}`);
+    log.error(`Durum dosyasi okunamadi/bozuk: ${err.message} - temiz baslaniyor.`);
     return false;
   }
+  if (state.tradeMode !== config.tradeMode) {
+    log.warn(`Kayitli durum '${state.tradeMode}' moduna ait, su anki mod '${config.tradeMode}' - durum yuklenmedi.`);
+    return false;
+  }
+  const check = validateState(state);
+  if (!check.ok) {
+    log.error(`Durum dogrulamasi BASARISIZ (${check.reason}) - bozuk durum yuklenmedi, temiz baslaniyor.`);
+    return false;
+  }
+  portfolio.quote = state.quote;
+  portfolio.positions = new Map(Object.entries(state.positions || {}));
+  portfolio.trades = state.trades || 0;
+  portfolio.wins = state.wins || 0;
+  portfolio.realizedPnl = state.realizedPnl || 0;
+  Object.assign(risk, state.risk || {});
+  log.info(`Durum geri yuklendi (${state.savedAt}): ${portfolio.positions.size} acik pozisyon, bakiye ${portfolio.quote.toFixed(2)} TRY`);
+  return true;
 }
