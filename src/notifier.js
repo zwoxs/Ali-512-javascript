@@ -38,8 +38,30 @@ async function sendDiscord(text) {
   }
 }
 
-export async function notify(text) {
+// Bildirim kisitlama: kritik olmayan mesajlar arasi minimum aralik.
+// Ag/veri dalgalanmasinda tekrarlayan uyarilarin telefonu bombardimana
+// tutmasini onler. Kritik bildirimler (islemler, acil fren) her zaman gecer.
+let lastThrottledAt = 0;
+
+/**
+ * @param {string} text
+ * @param {object} [opts]
+ * @param {boolean} [opts.critical=true] - false ise NOTIFY_THROTTLE_SEC uygulanir
+ * @param {function} [opts.now] - test icin saat enjeksiyonu
+ * @returns {Promise<boolean>} gonderildi mi
+ */
+export async function notify(text, { critical = true, now = () => Date.now() } = {}) {
+  if (!critical && config.notifyThrottleSec > 0) {
+    if (now() - lastThrottledAt < config.notifyThrottleSec * 1000) return false;
+    lastThrottledAt = now();
+  }
   await Promise.all([sendTelegram(text), sendDiscord(text)]);
+  return true;
+}
+
+/** Test yardimcisi: throttle durumunu sifirlar. */
+export function _resetThrottle() {
+  lastThrottledAt = 0;
 }
 
 const SIDE_EMOJI = {

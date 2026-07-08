@@ -21,6 +21,14 @@ için 21+; yoksa otomatik REST'e düşer).
 - 📣 **Sinyal modu**: `TRADE_MODE=signal` — işlem açmadan sadece Telegram/Discord'a sinyal gönderir
 - 🕐 **Borsa saati senkronizasyonu** + canlı modda başlangıçta **hesap doğrulaması**
 
+**Canlı işlem güvenilirliği (gerçek para katmanı)**
+- 🧾 **Hesap mutabakatı**: canlı modda bot durumu ile borsa bakiyeleri periyodik karşılaştırılır; sapma toleransı aşılırsa uyarı (isteğe bağlı yeni işlemleri durdurma)
+- 🆔 **İdempotent emir kimlikleri**: ağ hatasında emir aynı `clientOrderId` ile tekrarlanır — kayıp yanıt yüzünden **çift dolum önlenir**
+- 🔌 **API devre kesici**: art arda API hatasında yeni girişler geçici durur — borsa/ağ sorununda kör emir denenmez
+- 💧 **Likidite/hacim filtresi**: ortalama hacmin altındaki ince piyasada giriş yok (kötü dolumdan korunma)
+- 🕰️ **İşlem seansı filtresi**: düşük likidite saatlerinde (UTC saat/gün penceresi) giriş engellenir
+- 🔕 **Bildirim kısıtlama**: kritik olmayan uyarılarda spam önleme
+
 **Zarar sınırlama (minimum kayıp)**
 - 🛑 **ACİL FREN (kill-switch)**: toplam sermaye zirveden `MAX_TOTAL_DRAWDOWN_PCT` düşerse bot yeni işlem açmayı **kalıcı olarak** durdurur (yeniden başlatmada da korunur) — en güçlü sermaye koruması
 - 📏 **Risk bazlı boyutlama**: işlem başına sermayenin sadece %1'i riske edilir (ayarlanabilir)
@@ -54,14 +62,14 @@ için 21+; yoksa otomatik REST'e düşer).
 - 📱 **Telegram + Discord**: işlem bildirimleri, **günlük özet raporu**, ardışık hata alarmı
 - 🪵 **JSON log formatı** (`LOG_FORMAT=json`): Loki/ELK/CloudWatch gibi log toplayıcılara hazır
 - 🐳 **Docker + docker-compose + pm2** dağıtım dosyaları, **GitHub Actions CI**
-- ✅ **63 birim/entegrasyon testi** (`npm test`)
+- ✅ **72 birim/entegrasyon testi** (`npm test`)
 
 ## Kurulum
 
 ```bash
 node --version        # >= 18 (WebSocket icin >= 21 onerilir)
 cp .env.example .env  # ayarlari duzenleyin
-npm test              # 63 testin gectigini dogrulayin
+npm test              # 72 testin gectigini dogrulayin
 npm run doctor        # ortam tanilamasi (API erisimi, saat, izinler)
 ```
 
@@ -159,13 +167,17 @@ src/
 │   ├── optimizer.js          # Izgara arama + walk-forward dogrulama
 │   ├── monteCarlo.js         # Islem sirasi karistirma - saglamlik/iflas analizi
 │   ├── correlation.js        # Pearson korelasyon + cifte risk korumasi
+│   ├── sessionFilter.js      # Islem seansi (UTC saat/gun) filtresi
+│   ├── liquidity.js          # Hacim/likidite filtresi
+│   ├── apiHealth.js          # API devre kesici (circuit breaker)
+│   ├── reconciler.js         # Hesap mutabakati (ic durum <-> borsa bakiyesi)
 │   └── metrics.js            # Drawdown, Sharpe, Sortino, CAGR, Calmar, kar faktoru
 └── exchange/
     ├── wsFeed.js             # WebSocket kline akisi + otomatik REST fallback
     ├── market.js             # REST veri - yeniden deneme, rate-limit, disk onbellegi
     ├── brokers.js            # PaperBroker / LiveBroker (ayni arayuz) + LOT_SIZE
     └── binanceTr.js          # Binance TR Open API imzali istekler + saat senkronu
-test/                         # 63 birim + entegrasyon testi (node:test)
+test/                         # 72 birim + entegrasyon testi (node:test)
 profiles/                     # Hazir .env profilleri: guvenli.env, dengeli.env
 .github/workflows/ci.yml      # Her push'ta sozdizimi + test kosan CI
 Dockerfile / docker-compose.yml / ecosystem.config.cjs
@@ -196,6 +208,10 @@ Tam liste `.env.example` içinde. Öne çıkanlar:
 | `MAX_HOLD_CANDLES` | `0` | Kârsız pozisyon zaman aşımı |
 | `MIN_RR` | `0` | Minimum ödül/risk oranı zorlaması |
 | `CORRELATION_MAX` | `0` | Korele sembolde çifte pozisyon engeli (örn. 0.85) |
+| `RECONCILE` | `true` | Canlı modda hesap mutabakatı (durum ↔ borsa) |
+| `VOLUME_FILTER` | `false` | Düşük hacimli ince piyasada giriş engelleme |
+| `SESSION_FILTER` | `false` | UTC saat/gün penceresiyle giriş kısıtlama |
+| `API_MAX_CONSECUTIVE_ERRORS` | `5` | API devre kesici eşiği |
 | `DISCORD_WEBHOOK_URL` | — | Discord bildirimleri (isteğe bağlı) |
 | `HTF_FILTER` | `false` | Üst zaman dilimi trend filtresi |
 | `TRAILING_STOP_PCT` | `0` | İz süren stop (0 = kapalı) |

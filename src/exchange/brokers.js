@@ -1,6 +1,6 @@
 import { config } from "../config.js";
 import { log } from "../logger.js";
-import { placeMarketOrder } from "./binanceTr.js";
+import { placeMarketOrder, makeClientOrderId } from "./binanceTr.js";
 import { fetchLotStep } from "./market.js";
 
 /** Miktari borsa adim buyuklugune (LOT_SIZE) asagi yuvarlar. */
@@ -55,28 +55,39 @@ export class LiveBroker {
     return this.lotSteps.get(symbol);
   }
 
+  /**
+   * Emri idempotent gonderir: ag hatasinda AYNI clientOrderId ile bir kez daha
+   * dener. Ilk deneme borsaya ulasip yaniti kaybolduysa, borsa ikinci emri ayni
+   * kimlik nedeniyle reddeder - boylece cift dolum onlenir.
+   */
+  async _send(symbol, side, roundedQty, price) {
+    const clientOrderId = makeClientOrderId(symbol, side);
+    let res;
+    try {
+      res = await placeMarketOrder(symbol, side, roundedQty, clientOrderId);
+    } catch (err) {
+      log.warn(`${symbol} ${side} emri hata verdi (${err.message}) - ayni kimlikle 1 kez daha deneniyor.`);
+      res = await placeMarketOrder(symbol, side, roundedQty, clientOrderId);
+    }
+    log.debug(`Emir yaniti (${clientOrderId}): ${JSON.stringify(res)}`);
+    const fillPrice = parseFloat(res?.data?.price) || price;
+    const fillQty = parseFloat(res?.data?.executedQty) || roundedQty;
+    return { qty: fillQty, price: fillPrice, fee: fillQty * fillPrice * (this.cfg.feePct / 100), clientOrderId };
+  }
+
   async buy(symbol, qty, price) {
     const roundedQty = roundToStep(qty, await this._step(symbol));
     if (roundedQty <= 0) {
       log.warn(`${symbol}: yuvarlama sonrasi miktar sifir - emir gonderilmedi.`);
       return null;
     }
-    const res = await placeMarketOrder(symbol, "BUY", roundedQty);
-    log.debug(`Emir yaniti: ${JSON.stringify(res)}`);
-    // MARKET emri aninda dolar; borsa ortalama dolum fiyati donerse onu kullan
-    const fillPrice = parseFloat(res?.data?.price) || price;
-    const fillQty = parseFloat(res?.data?.executedQty) || roundedQty;
-    return { qty: fillQty, price: fillPrice, fee: fillQty * fillPrice * (this.cfg.feePct / 100) };
+    return this._send(symbol, "BUY", roundedQty, price);
   }
 
   async sell(symbol, qty, price) {
     const roundedQty = roundToStep(qty, await this._step(symbol));
     if (roundedQty <= 0) return null;
-    const res = await placeMarketOrder(symbol, "SELL", roundedQty);
-    log.debug(`Emir yaniti: ${JSON.stringify(res)}`);
-    const fillPrice = parseFloat(res?.data?.price) || price;
-    const fillQty = parseFloat(res?.data?.executedQty) || roundedQty;
-    return { qty: fillQty, price: fillPrice, fee: fillQty * fillPrice * (this.cfg.feePct / 100) };
+    return this._send(symbol, "SELL", roundedQty, price);
   }
 }
 

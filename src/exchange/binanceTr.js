@@ -1,5 +1,17 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { config } from "../config.js";
+
+/**
+ * Idempotent istemci emir kimligi uretir.
+ * Ag hatasi sonrasi bir emir yeniden gonderilirse, AYNI clientOrderId ile
+ * gonderildiginde borsa ikinci emri reddeder - boylece cift dolum onlenir.
+ * Format: bot-<symbol>-<side>-<zaman36>-<rastgele>. Binance 36 karakter siniri.
+ */
+export function makeClientOrderId(symbol, side) {
+  const sym = symbol.replace(/[^A-Z0-9]/gi, "").slice(0, 8);
+  const rand = randomBytes(3).toString("hex");
+  return `b${sym}${side[0]}${Date.now().toString(36)}${rand}`.slice(0, 36);
+}
 
 // ---------------------------------------------------------------------------
 // Binance TR Open API - imzali (canli emir) istekler
@@ -69,13 +81,15 @@ export function getAccount() {
  * Piyasa (MARKET) emri gonderir (live mod).
  * Binance TR Open API sembol formati alt cizgilidir: BTC_TRY
  * side kodlamasi: BUY -> 0, SELL -> 1; type: 2 -> MARKET
+ * @param {string} [clientOrderId] - idempotency icin; verilmezse otomatik uretilir
  */
-export function placeMarketOrder(symbol, side, quantity) {
+export function placeMarketOrder(symbol, side, quantity, clientOrderId) {
   const trSymbol = symbol.includes("_") ? symbol : symbol.replace(/(TRY|USDT|BTC|ETH)$/, "_$1");
   return signedRequest("POST", "/open/v1/orders", {
     symbol: trSymbol,
     side: side === "BUY" ? "0" : "1",
     type: "2",
     quantity: String(quantity),
+    newClientOrderId: clientOrderId || makeClientOrderId(symbol, side),
   });
 }

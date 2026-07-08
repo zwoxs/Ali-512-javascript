@@ -1,6 +1,8 @@
 import { log } from "../logger.js";
 import { atr } from "../indicators.js";
 import { isUptrend, isTrendingMarket } from "./trendFilter.js";
+import { inSession } from "./sessionFilter.js";
+import { hasSufficientVolume } from "./liquidity.js";
 
 /**
  * Islem motoru - tek sembol icin karar dongusu.
@@ -19,7 +21,7 @@ export class Engine {
    * @param {function} [deps.onTrade] - islem sonrasi bildirim callback'i
    * @param {boolean} [deps.silent]  - true ise islem loglari yazilmaz (optimizasyon kosulari)
    */
-  constructor({ symbol, strategy, cfg, portfolio, risk, broker, onTrade, correlationGuard, silent = false }) {
+  constructor({ symbol, strategy, cfg, portfolio, risk, broker, onTrade, correlationGuard, haltGate, silent = false }) {
     this.symbol = symbol;
     this.strategy = strategy;
     this.cfg = cfg;
@@ -28,6 +30,7 @@ export class Engine {
     this.broker = broker;
     this.onTrade = onTrade || (() => {});
     this.correlationGuard = correlationGuard || null; // (symbol) => neden|null
+    this.haltGate = haltGate || null;                 // () => neden|null (yeni girisi durdurur)
     this.silent = silent;
     this.lastCandleTime = 0;
     this.lastSignal = null; // izleme paneli icin
@@ -118,7 +121,8 @@ export class Engine {
     }
 
     if (signal === "BUY" && !this.portfolio.inPosition(this.symbol)) {
-      const blocked = this.risk.canOpen() ||
+      const blocked = (this.haltGate && this.haltGate()) ||
+        this.risk.canOpen() ||
         this.risk.checkPortfolioLimits(this.portfolio, { [this.symbol]: currentPrice }) ||
         (this.correlationGuard && this.correlationGuard(this.symbol));
       if (blocked) {
@@ -131,6 +135,14 @@ export class Engine {
       }
       if (this.cfg.adxFilter && !isTrendingMarket(closedCandles, this.cfg)) {
         log.debug(`${this.symbol} AL sinyali ADX filtresine takildi: piyasa trendsiz.`);
+        return;
+      }
+      if (this.cfg.sessionFilter && !inSession(ts, this.cfg)) {
+        log.debug(`${this.symbol} AL sinyali seans disinda (${this.cfg.sessionHours} UTC) - atlandi.`);
+        return;
+      }
+      if (this.cfg.volumeFilter && !hasSufficientVolume(closedCandles, this.cfg)) {
+        if (!this.silent) log.warn(`${this.symbol} AL sinyali dusuk hacim filtresine takildi - ince piyasa.`);
         return;
       }
       // Volatilite bekcisi: asiri oynak piyasada stoplar anlamsizlasir - girme

@@ -158,6 +158,8 @@ export function formatMetrics(status, health) {
   metric("bot_uptime_seconds", "Calisma suresi (sn)", health?.uptimeSec, "counter");
   metric("bot_memory_mb", "Bellek kullanimi (MB)", health?.memoryMb);
   metric("bot_feed_last_event_age_seconds", "Son veri olayindan gecen sure (sn)", health?.feed?.lastEventAgeSec);
+  metric("bot_api_circuit_open", "API devre kesici durumu (1 = acik)", health?.circuit?.open ? 1 : 0);
+  metric("bot_reconcile_halt", "Mutabakat durdurma (1 = aktif)", health?.reconcileHalt ? 1 : 0);
   return lines.join("\n") + "\n";
 }
 

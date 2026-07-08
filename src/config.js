@@ -156,6 +156,32 @@ export const config = {
   // aksakligi sayilir ve o tur islenmez (0 = kapali)
   sanityMaxJumpPct: num("SANITY_MAX_JUMP_PCT", 15),
 
+  // Likidite/hacim filtresi: son mumun hacmi ortalama hacmin bu kati altindaysa
+  // giris yapilmaz - ince/likit olmayan piyasada kotu dolumdan korunma (0 = kapali)
+  volumeFilter: bool("VOLUME_FILTER", false),
+  volumeMinRatio: num("VOLUME_MIN_RATIO", 0.5), // guncel / ortalama hacim alt siniri
+  volumeAvgPeriod: num("VOLUME_AVG_PERIOD", 20),
+
+  // Islem seansi filtresi: sadece belirtilen UTC saat/gun araliginda giris yapilir.
+  // Kripto 7/24 acik ama dusuk likidite saatlerinde dolumlar kotudur. (kapali = her zaman)
+  sessionFilter: bool("SESSION_FILTER", false),
+  sessionHours: str("SESSION_HOURS", "0-23"), // UTC saat araligi, or. "6-22"
+  sessionDays: str("SESSION_DAYS", "0-6"),    // 0=Pazar..6=Cumartesi, or. "1-5" hafta ici
+
+  // Hesap mutabakati (live): bot durumu ile borsa bakiyesi periyodik karsilastirilir.
+  // Sapma toleransi asilirsa uyari verilir ve istege bagli yeni islem durur.
+  reconcile: bool("RECONCILE", true),
+  reconcileTolerancePct: num("RECONCILE_TOLERANCE_PCT", 2),
+  reconcileHaltOnDrift: bool("RECONCILE_HALT_ON_DRIFT", false),
+  reconcileIntervalMin: num("RECONCILE_INTERVAL_MIN", 15),
+
+  // API devre kesici: art arda bu kadar API hatasinda yeni islem gecici durur
+  apiMaxConsecutiveErrors: num("API_MAX_CONSECUTIVE_ERRORS", 5),
+  apiCircuitCooldownMin: num("API_CIRCUIT_COOLDOWN_MIN", 5),
+
+  // Bildirim kisitlama: kritik olmayan bildirimler arasi minimum saniye (0 = kapali)
+  notifyThrottleSec: num("NOTIFY_THROTTLE_SEC", 0),
+
   // Devre kesiciler
   maxDailyLossPct: num("MAX_DAILY_LOSS_PCT", 5),      // gunluk zarar limiti (baslangic sermayesine gore %)
   maxConsecutiveLosses: num("MAX_CONSECUTIVE_LOSSES", 3),
@@ -227,6 +253,14 @@ export function validateConfig(cfg = config) {
     errors.push("CORRELATION_MAX 0-1 arasinda olmali (or. 0.85).");
   if (cfg.confluenceMinVotes < 1)
     errors.push("CONFLUENCE_MIN_VOTES en az 1 olmali.");
+  if (cfg.volumeFilter && (cfg.volumeMinRatio <= 0 || cfg.volumeAvgPeriod < 2))
+    errors.push("VOLUME_MIN_RATIO pozitif ve VOLUME_AVG_PERIOD en az 2 olmali.");
+  if (cfg.sessionFilter) {
+    if (!/^\d{1,2}-\d{1,2}$/.test(cfg.sessionHours))
+      errors.push("SESSION_HOURS 'BAS-BIT' formatinda olmali (or. 6-22).");
+    if (!/^\d-\d$/.test(cfg.sessionDays))
+      errors.push("SESSION_DAYS 'BAS-BIT' formatinda olmali (0=Pazar..6=Cumartesi, or. 1-5).");
+  }
   if (cfg.minRr > 0) {
     const rr = cfg.stopMode === "atr"
       ? cfg.atrTpMult / cfg.atrStopMult

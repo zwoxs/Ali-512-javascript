@@ -10,6 +10,8 @@ import { saveState, loadState } from "./state.js";
 import { notify, formatTradeMessage } from "./notifier.js";
 import { startDashboard } from "./dashboard.js";
 import { correlationBlocked } from "./core/correlation.js";
+import { ApiHealth } from "./core/apiHealth.js";
+import { reconcile, parseBalances, formatDrift } from "./core/reconciler.js";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -83,10 +85,19 @@ async function main() {
       window: config.correlationWindow,
     });
 
+  // API devre kesici: art arda API hatasinda yeni girisleri gecici durdurur
+  const apiHealth = new ApiHealth(config);
+  let reconcileHalt = false; // mutabakat sapmasi kalici durdurma isteniyorsa
+  const haltGate = () => {
+    if (apiHealth.isOpen()) return `API devre kesici acik (${apiHealth.remainingSec()}s kaldi) - yeni giris yok.`;
+    if (reconcileHalt) return "Hesap mutabakati sapmasi nedeniyle yeni giris durduruldu - kontrol edin.";
+    return null;
+  };
+
   const engines = config.symbols.map(
     (symbol) => new Engine({
       symbol, strategy: strategyBySymbol[symbol], cfg: config,
-      portfolio, risk, broker, onTrade, correlationGuard,
+      portfolio, risk, broker, onTrade, correlationGuard, haltGate,
     })
   );
 
@@ -132,13 +143,15 @@ async function main() {
     markers: portfolio.tradeLog.slice(-40),
   });
   const getHealth = () => ({
-    status: "ok",
+    status: apiHealth.isOpen() || reconcileHalt ? "degraded" : "ok",
     uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
     memoryMb: +(process.memoryUsage().rss / 1048576).toFixed(1),
     feed: {
       websocket: feed.wsSupported,
       lastEventAgeSec: feed.lastEvent ? Math.floor((Date.now() - feed.lastEvent) / 1000) : null,
     },
+    circuit: { open: apiHealth.isOpen(), remainingSec: apiHealth.remainingSec() },
+    reconcileHalt,
     node: process.version,
   });
   const dashboard = startDashboard(config.dashboardPort, getStatus, getHealth);
@@ -156,6 +169,35 @@ async function main() {
   // Ardisik veri hatalarinda tek seferlik Telegram uyarisi (spam yok)
   const errorStreaks = new Map();
   let lastReportDay = new Date().toISOString().slice(0, 10);
+  let lastReconcile = 0;
+
+  // Live modda baslangicta hesap mutabakati (durum diskten yuklenmis olabilir)
+  const runReconcile = async () => {
+    if (config.tradeMode !== "live" || !config.reconcile) return;
+    try {
+      const { getAccount } = await import("./exchange/binanceTr.js");
+      const balances = parseBalances(await getAccount());
+      const { ok, drifts } = reconcile(portfolio, balances, {
+        tolerancePct: config.reconcileTolerancePct,
+        quoteAsset: "TRY",
+      });
+      lastReconcile = Date.now();
+      if (!ok) {
+        const msg = formatDrift(drifts);
+        log.warn(`Hesap mutabakati SAPMA: ${msg}`);
+        await notify(`⚠️ Hesap mutabakati sapmasi:\n${msg}`);
+        if (config.reconcileHaltOnDrift) {
+          reconcileHalt = true;
+          log.error("RECONCILE_HALT_ON_DRIFT aktif: yeni girisler durduruldu.");
+        }
+      } else {
+        log.info("Hesap mutabakati temiz: ic durum borsa bakiyeleriyle uyumlu.");
+      }
+    } catch (err) {
+      log.warn(`Hesap mutabakati yapilamadi: ${err.message}`);
+    }
+  };
+  await runReconcile();
 
   let tick = 0;
   while (running) {
@@ -178,6 +220,7 @@ async function main() {
         latestPrices[engine.symbol] = currentPrice;
         await engine.step(closedCandles, currentPrice, Date.now());
         errorStreaks.set(engine.symbol, 0);
+        apiHealth.recordSuccess();
       } catch (err) {
         log.error(`${engine.symbol}: ${err.message}`);
         const streak = (errorStreaks.get(engine.symbol) || 0) + 1;
@@ -185,7 +228,20 @@ async function main() {
         if (streak === 5) {
           await notify(`🚨 ${engine.symbol}: 5 ardisik veri/islem hatasi - son hata: ${err.message}`);
         }
+        // API devre kesici: art arda hatada yeni girisler gecici durur
+        if (apiHealth.recordError()) {
+          log.error(`API DEVRE KESICI ACILDI: ${config.apiCircuitCooldownMin} dk yeni giris yok.`);
+          await notify(`🔌 API devre kesici acildi (art arda ${config.apiMaxConsecutiveErrors} hata). ${config.apiCircuitCooldownMin} dk yeni islem yok.`);
+        }
       }
+    }
+
+    // Periyodik hesap mutabakati (live)
+    if (
+      config.tradeMode === "live" && config.reconcile &&
+      Date.now() - lastReconcile > config.reconcileIntervalMin * 60_000
+    ) {
+      await runReconcile();
     }
 
     // Gunluk ozet raporu (Telegram)
