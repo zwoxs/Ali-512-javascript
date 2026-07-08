@@ -103,6 +103,24 @@ export class RiskManager {
     return null;
   }
 
+  /**
+   * Portfoy seviyesi limitler: maksimum acik pozisyon sayisi ve toplam maruziyet.
+   * Yeni pozisyon acilmadan once kontrol edilir; engel varsa neden dondurur.
+   */
+  checkPortfolioLimits(portfolio, prices = {}) {
+    if (this.cfg.maxOpenPositions > 0 && portfolio.positions.size >= this.cfg.maxOpenPositions) {
+      return `Maksimum acik pozisyon sayisina ulasildi (${this.cfg.maxOpenPositions}).`;
+    }
+    if (this.cfg.maxExposurePct > 0) {
+      const equity = portfolio.equity(prices);
+      const exposurePct = equity > 0 ? ((equity - portfolio.quote) / equity) * 100 : 0;
+      if (exposurePct >= this.cfg.maxExposurePct) {
+        return `Toplam maruziyet limiti asildi (%${exposurePct.toFixed(1)} >= %${this.cfg.maxExposurePct}).`;
+      }
+    }
+    return null;
+  }
+
   /** Kismi kar alma zamani geldi mi? Neden dondurur, degilse null. */
   checkPartial(pos, price) {
     if (!(this.cfg.partialTpPct > 0) || pos.partialDone) return null;

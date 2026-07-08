@@ -1,13 +1,14 @@
 {
   "name": "binance-tr-coin-bot",
-  "version": "4.0.0",
-  "description": "Binance TR icin 5 stratejili, kismi kar almali, Monte Carlo analizli, WebSocket beslemeli, walk-forward optimizasyonlu alim-satim botu (varsayilan: paper trading)",
+  "version": "5.0.0",
+  "description": "Binance TR icin 5 stratejili, piramitlemeli, ADX rejim filtreli, Monte Carlo analizli, WebSocket beslemeli alim-satim botu (varsayilan: paper trading)",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "backtest": "node src/backtest.js",
     "optimize": "node src/optimize.js",
+    "report": "node src/report.js",
     "test": "node --test"
   },
   "engines": {

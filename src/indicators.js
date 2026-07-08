@@ -164,5 +164,54 @@ export function supertrend(candles, period = 10, mult = 3) {
   return { trend, line };
 }
 
+/**
+ * ADX (Average Directional Index) - Wilder trend gucu olcusu.
+ * ~20 alti: trendsiz/testere piyasa; 25+ : belirgin trend.
+ * Donen dizi candles.length - 2*period + 1 uzunlugundadir.
+ */
+export function adx(candles, period = 14) {
+  if (candles.length <= 2 * period) return [];
+  const plusDM = [], minusDM = [], trs = [];
+  for (let i = 1; i < candles.length; i++) {
+    const c = candles[i], p = candles[i - 1];
+    const upMove = c.high - p.high;
+    const downMove = p.low - c.low;
+    plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+    trs.push(Math.max(c.high - c.low, Math.abs(c.high - p.close), Math.abs(c.low - p.close)));
+  }
+
+  // Wilder duzlestirmesi
+  const smooth = (arr) => {
+    let prev = arr.slice(0, period).reduce((a, b) => a + b, 0);
+    const out = [prev];
+    for (let i = period; i < arr.length; i++) {
+      prev = prev - prev / period + arr[i];
+      out.push(prev);
+    }
+    return out;
+  };
+  const smTR = smooth(trs);
+  const smPlus = smooth(plusDM);
+  const smMinus = smooth(minusDM);
+
+  const dxs = [];
+  for (let i = 0; i < smTR.length; i++) {
+    const plusDI = smTR[i] === 0 ? 0 : (100 * smPlus[i]) / smTR[i];
+    const minusDI = smTR[i] === 0 ? 0 : (100 * smMinus[i]) / smTR[i];
+    const sum = plusDI + minusDI;
+    dxs.push(sum === 0 ? 0 : (100 * Math.abs(plusDI - minusDI)) / sum);
+  }
+
+  // ADX = DX'in Wilder ortalamasi
+  let prevAdx = dxs.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  const out = [prevAdx];
+  for (let i = period; i < dxs.length; i++) {
+    prevAdx = (prevAdx * (period - 1) + dxs[i]) / period;
+    out.push(prevAdx);
+  }
+  return out;
+}
+
 export const last = (arr) => arr[arr.length - 1];
 export const prevLast = (arr) => arr[arr.length - 2];

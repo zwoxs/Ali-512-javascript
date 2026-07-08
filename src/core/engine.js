@@ -1,6 +1,6 @@
 import { log } from "../logger.js";
 import { atr } from "../indicators.js";
-import { isUptrend } from "./trendFilter.js";
+import { isUptrend, isTrendingMarket } from "./trendFilter.js";
 
 /**
  * Islem motoru - tek sembol icin karar dongusu.
@@ -71,12 +71,34 @@ export class Engine {
     if (!lastClosed || lastClosed.closeTime === this.lastCandleTime) return;
     this.lastCandleTime = lastClosed.closeTime;
 
+    // 2a) Piramitleme: kazanan pozisyona kademeli ekleme (mum basina en fazla bir kez)
+    if (pos && this.cfg.pyramidMaxAddons > 0 && (pos.addons || 0) < this.cfg.pyramidMaxAddons) {
+      const lastAdd = pos.lastAddPrice || pos.entryPrice;
+      if (currentPrice >= lastAdd * (1 + this.cfg.pyramidTriggerPct / 100)) {
+        await this._addOn(currentPrice, ts);
+      }
+    }
+
     const { signal, reason, snapshot } = this.strategy.evaluate(closedCandles, this.cfg);
     this.lastSignal = { signal, reason, snapshot, ts };
     log.debug(`${this.symbol} | ${JSON.stringify(snapshot)} | Sinyal: ${signal}`);
 
+    // Sinyal modu: islem acilmaz, sadece bildirim gonderilir
+    if (this.cfg.tradeMode === "signal") {
+      if (signal !== "HOLD") {
+        const record = {
+          side: signal === "BUY" ? "SINYAL-AL" : "SINYAL-SAT",
+          symbol: this.symbol, qty: 0, price: currentPrice, reason, mode: "signal",
+        };
+        this._logTrade(record);
+        await this.onTrade(record);
+      }
+      return;
+    }
+
     if (signal === "BUY" && !this.portfolio.inPosition(this.symbol)) {
-      const blocked = this.risk.canOpen();
+      const blocked = this.risk.canOpen() ||
+        this.risk.checkPortfolioLimits(this.portfolio, { [this.symbol]: currentPrice });
       if (blocked) {
         if (!this.silent) log.warn(`${this.symbol} AL sinyali engellendi: ${blocked}`);
         return;
@@ -85,10 +107,38 @@ export class Engine {
         log.debug(`${this.symbol} AL sinyali HTF filtresine takildi: ust zaman dilimi dusus trendinde.`);
         return;
       }
+      if (this.cfg.adxFilter && !isTrendingMarket(closedCandles, this.cfg)) {
+        log.debug(`${this.symbol} AL sinyali ADX filtresine takildi: piyasa trendsiz.`);
+        return;
+      }
       await this._buy(currentPrice, reason, ts, closedCandles);
     } else if (signal === "SELL" && this.portfolio.inPosition(this.symbol)) {
       await this._sell(currentPrice, reason, ts);
     }
+  }
+
+  /** Piramit kademesi: ilk giris boyutunun kuculen kati kadar ekleme yapar. */
+  async _addOn(price, ts) {
+    const pos = this.portfolio.getPosition(this.symbol);
+    if (!pos) return;
+    const nextAddon = (pos.addons || 0) + 1;
+    const qty = (pos.initialQty ?? pos.qty) * this.cfg.pyramidSizeFactor ** nextAddon;
+    const cost = qty * price;
+    if (qty <= 0 || cost > this.portfolio.quote) {
+      log.debug(`${this.symbol}: piramit kademesi icin yeterli bakiye yok.`);
+      return;
+    }
+    const fill = await this.broker.buy(this.symbol, qty, price);
+    if (!fill) return;
+    fill.ts = ts;
+    this.portfolio.recordAddOn(this.symbol, fill);
+    const record = {
+      side: "KADEME-AL", symbol: this.symbol, qty: fill.qty, price: fill.price,
+      reason: `Piramit kademe ${nextAddon}/${this.cfg.pyramidMaxAddons} (+%${this.cfg.pyramidTriggerPct} hareket)`,
+      mode: this.cfg.tradeMode,
+    };
+    this._logTrade(record);
+    await this.onTrade(record);
   }
 
   async _buy(price, reason, ts, candles) {

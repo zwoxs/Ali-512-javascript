@@ -18,13 +18,17 @@ için 21+; yoksa otomatik REST'e düşer).
 - 🔁 **Tek kod yolu**: backtest, optimizasyon ve canlı işlem aynı `Engine`/`RiskManager`/`Portfolio` sınıflarından geçer
 - 🧩 **5 takılabilir strateji**: `ema_rsi` (trend), `macd` (momentum), `bollinger` (ortalamaya dönüş), `donchian` (Turtle kanal kırılımı), `supertrend` (ATR trend takibi)
 - 🎯 **Sembol başına strateji**: `SYMBOLS=BTCTRY:ema_rsi,ETHTRY:supertrend` — çoklu strateji portföyü
-- 🕐 **Borsa saati senkronizasyonu**: imzalı isteklerde saat sapması hataları önlenir
+- 📣 **Sinyal modu**: `TRADE_MODE=signal` — işlem açmadan sadece Telegram/Discord'a sinyal gönderir
+- 🕐 **Borsa saati senkronizasyonu** + canlı modda başlangıçta **hesap doğrulaması**
 
 **Risk yönetimi**
 - 📏 **Risk bazlı boyutlama**: pozisyon büyüklüğü = riske edilen sermaye / stop mesafesi
 - 🌊 **ATR (volatiliteye uyumlu) stoplar**: `STOP_MODE=atr` ile stop/hedef, giriş anındaki piyasa oynaklığına göre belirlenir — sakin piyasada dar, dalgalı piyasada geniş
 - ✂️ **Kısmi kâr alma (scale-out)**: hedefin ilk kademesinde pozisyonun bir kısmı kapatılır, stop başabaşa çekilir — **kalan pozisyon artık zarar edemez**
+- 🔺 **Piramitleme (scale-in)**: kazanan pozisyona küçülen kademelerle ekleme; giriş fiyatı ağırlıklı ortalamayla güncellenir
 - 🧭 **Üst zaman dilimi trend filtresi**: `HTF_FILTER=true` ile düşüş trendinde AL sinyalleri engellenir
+- 📐 **ADX rejim filtresi**: `ADX_FILTER=true` ile trendsiz/testere piyasada işlem açılmaz — trend stratejilerinin kırıldığı ortamdan korunma
+- 🧺 **Portföy limitleri**: maks. eşzamanlı pozisyon sayısı + toplam maruziyet tavanı
 - 🛑 **İz süren stop, günlük zarar limiti, ardışık zarar soğuması**: üç bağımsız devre kesici
 - 🧮 **Tam tur muhasebe**: K/Z hesabına giriş + çıkış komisyonu ve kayma dahildir
 
@@ -35,11 +39,12 @@ için 21+; yoksa otomatik REST'e düşer).
 - 💽 **Kline disk önbelleği**: optimizasyondaki yüzlerce koşum tek indirmeyle beslenir
 
 **Operasyon**
-- 📊 **Web izleme paneli** + `/api/health` endpoint'i (uptime izleme / k8s liveness için)
+- 📊 **Web izleme paneli**: özsermaye grafiği + **mum grafiği ve işlem işaretleri** (sembol seçici, son sinyal bilgisi) + `/api/health` endpoint'i
+- 📄 **HTML performans raporu**: `npm run report` — işlem günlüğünden kümülatif K/Z, günlük K/Z ve sembol bazlı tek dosyalık rapor üretir
 - 💾 **Atomik durum kalıcılığı**: yeniden başlatmada pozisyonlar diskten kurtarılır
-- 📱 **Telegram**: işlem bildirimleri, **günlük özet raporu**, ardışık hata alarmı
+- 📱 **Telegram + Discord**: işlem bildirimleri, **günlük özet raporu**, ardışık hata alarmı
 - 🐳 **Docker + docker-compose + pm2** dağıtım dosyaları, **GitHub Actions CI**
-- ✅ **42 birim/entegrasyon testi** (`npm test`)
+- ✅ **48 birim/entegrasyon testi** (`npm test`)
 
 ## Kurulum
 
@@ -114,15 +119,16 @@ src/
 ├── config.js                 # .env yukleme + dogrulama (hatali ayarla baslamaz)
 ├── logger.js                 # Seviyeli log + trades.jsonl denetim izi
 ├── state.js                  # Atomik durum kaliciligi (data/state.json)
-├── notifier.js               # Telegram bildirimleri (hata botu durdurmaz)
-├── dashboard.js              # Yerlesik web izleme paneli (sadece 127.0.0.1)
+├── notifier.js               # Telegram + Discord bildirimleri (hata botu durdurmaz)
+├── report.js                 # Islem gunlugunden HTML performans raporu (npm run report)
+├── dashboard.js              # Web paneli: ozsermaye + mum grafigi + islem isaretleri
 ├── indicators.js             # SMA, EMA, RSI, MACD, Bollinger, ATR, Donchian, SuperTrend
 ├── strategies/               # Strateji kayit defteri + 5 strateji (ortak sozlesme)
 ├── core/
 │   ├── engine.js             # Karar dongusu - backtest ve canli icin TEK kod yolu
 │   ├── portfolio.js          # Tam tur muhasebe: bakiye, pozisyon, kismi satis, K/Z defteri
 │   ├── riskManager.js        # Boyutlama, percent/ATR stoplar, kismi kar, devre kesiciler
-│   ├── trendFilter.js        # Ust zaman dilimi EMA trend filtresi
+│   ├── trendFilter.js        # HTF EMA trend filtresi + ADX rejim filtresi
 │   ├── backtester.js         # Yeniden kullanilabilir backtest cekirdegi
 │   ├── optimizer.js          # Izgara arama + walk-forward dogrulama
 │   ├── monteCarlo.js         # Islem sirasi karistirma - saglamlik/iflas analizi
@@ -132,7 +138,7 @@ src/
     ├── market.js             # REST veri - yeniden deneme, rate-limit, disk onbellegi
     ├── brokers.js            # PaperBroker / LiveBroker (ayni arayuz) + LOT_SIZE
     └── binanceTr.js          # Binance TR Open API imzali istekler + saat senkronu
-test/                         # 42 birim + entegrasyon testi (node:test)
+test/                         # 48 birim + entegrasyon testi (node:test)
 .github/workflows/ci.yml      # Her push'ta sozdizimi + test kosan CI
 Dockerfile / docker-compose.yml / ecosystem.config.cjs
 ```
@@ -153,6 +159,10 @@ Tam liste `.env.example` içinde. Öne çıkanlar:
 | `SIZING_MODE` | `percent` | `percent` \| `risk` (stop mesafesine göre) |
 | `STOP_MODE` | `percent` | `percent` \| `atr` (volatiliteye uyumlu) |
 | `PARTIAL_TP_PCT` | `0` | Kısmi kâr alma eşiği (0 = kapalı) |
+| `PYRAMID_MAX_ADDONS` | `0` | Piramit kademe sayısı (0 = kapalı) |
+| `ADX_FILTER` | `false` | Trendsiz piyasada işlem engelleme |
+| `MAX_OPEN_POSITIONS` | `0` | Eşzamanlı pozisyon limiti (0 = sınırsız) |
+| `DISCORD_WEBHOOK_URL` | — | Discord bildirimleri (isteğe bağlı) |
 | `HTF_FILTER` | `false` | Üst zaman dilimi trend filtresi |
 | `TRAILING_STOP_PCT` | `0` | İz süren stop (0 = kapalı) |
 | `MAX_DAILY_LOSS_PCT` | `5` | Günlük zarar devre kesicisi |

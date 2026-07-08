@@ -118,6 +118,11 @@ export class MarketFeed {
     return { closedCandles, currentPrice: lastCandle.close };
   }
 
+  /** Izleme paneli grafigi icin son N mum (kopya). */
+  getCandles(symbol, count = 120) {
+    return (this.cache.get(symbol) || []).slice(-count);
+  }
+
   stop() {
     this.stopped = true;
     try { this.ws?.close(); } catch { /* kapanista hata onemsiz */ }

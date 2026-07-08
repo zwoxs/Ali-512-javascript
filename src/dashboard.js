@@ -37,7 +37,10 @@ const PAGE = /* html */ `<!doctype html>
 <div class="sub" id="sub">yukleniyor...</div>
 <div class="warn" id="warn"></div>
 <div class="grid" id="cards"></div>
+<h1 style="font-size:15px;margin-bottom:8px">Ozsermaye</h1>
 <canvas id="chart" width="1200" height="360"></canvas>
+<h1 style="font-size:15px;margin-bottom:8px">Fiyat Grafigi <select id="symSelect" style="background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 8px;margin-left:8px"></select> <span style="color:#8b949e;font-size:12px" id="sigInfo"></span></h1>
+<canvas id="candleChart" width="1200" height="400"></canvas>
 <h1 style="font-size:15px;margin-bottom:8px">Acik Pozisyonlar</h1>
 <table><thead><tr><th>Sembol</th><th>Miktar</th><th>Giris</th><th>Guncel</th><th>K/Z %</th></tr></thead><tbody id="positions"></tbody></table>
 <h1 style="font-size:15px;margin-bottom:8px">Son Islemler</h1>
@@ -69,7 +72,47 @@ async function refresh() {
       ? s.recentTrades.map(t => "<tr><td>" + new Date(t.closedAt).toLocaleString("tr-TR") + "</td><td>" + t.symbol + "</td><td>" + fmt(t.entryPrice, 4) + "</td><td>" + fmt(t.exitPrice, 4) + '</td><td class="' + (t.pnl >= 0 ? "pos" : "neg") + '">' + fmt(t.pnl) + " TRY</td></tr>").join("")
       : '<tr><td colspan="5" style="color:#8b949e">henuz islem yok</td></tr>';
     drawChart(s.equityHistory, s.initialBalance);
+    updateSymbolSelect(s.symbols);
+    const sym = document.getElementById("symSelect").value || s.symbols[0];
+    const sig = s.signals?.[sym];
+    document.getElementById("sigInfo").textContent = sig ? "son sinyal: " + sig.signal + " — " + sig.reason : "";
+    drawCandles(s.charts?.[sym] || [], (s.markers || []).filter(m => m.symbol === sym));
   } catch (e) { document.getElementById("sub").textContent = "baglanti hatasi: " + e.message; }
+}
+function updateSymbolSelect(symbols) {
+  const sel = document.getElementById("symSelect");
+  if (sel.options.length === symbols.length) return;
+  sel.innerHTML = symbols.map(s => '<option value="' + s + '">' + s + "</option>").join("");
+}
+document.addEventListener("change", e => { if (e.target.id === "symSelect") refresh(); });
+function drawCandles(candles, markers) {
+  const c = document.getElementById("candleChart"), ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, c.width, c.height);
+  if (candles.length < 2) return;
+  const lows = candles.map(k => k.l), highs = candles.map(k => k.h);
+  const min = Math.min(...lows), max = Math.max(...highs), pad = (max - min) * 0.05 || 1;
+  const w = (c.width - 20) / candles.length;
+  const x = i => 10 + i * w + w / 2;
+  const y = v => c.height - 20 - ((v - (min - pad)) / ((max + pad) - (min - pad))) * (c.height - 40);
+  candles.forEach((k, i) => {
+    const up = k.c >= k.o;
+    ctx.strokeStyle = ctx.fillStyle = up ? "#3fb950" : "#f85149";
+    ctx.beginPath(); ctx.moveTo(x(i), y(k.h)); ctx.lineTo(x(i), y(k.l)); ctx.stroke();
+    const bh = Math.max(1, Math.abs(y(k.o) - y(k.c)));
+    ctx.fillRect(x(i) - w * 0.35, Math.min(y(k.o), y(k.c)), w * 0.7, bh);
+  });
+  // Islem isaretleri: giris (yukari ucgen) / cikis (asagi ucgen)
+  const t0 = candles[0].t, t1 = candles[candles.length - 1].t;
+  const tx = t => 10 + ((t - t0) / (t1 - t0)) * (c.width - 20);
+  const tri = (px, py, up, color) => {
+    ctx.fillStyle = color; ctx.beginPath();
+    ctx.moveTo(px, py); ctx.lineTo(px - 6, py + (up ? 10 : -10)); ctx.lineTo(px + 6, py + (up ? 10 : -10));
+    ctx.closePath(); ctx.fill();
+  };
+  for (const m of markers) {
+    if (m.openedAt >= t0 && m.openedAt <= t1) tri(tx(m.openedAt), y(m.entryPrice) + 4, true, "#3fb950");
+    if (m.closedAt >= t0 && m.closedAt <= t1) tri(tx(m.closedAt), y(m.exitPrice) - 4, false, m.pnl >= 0 ? "#d29922" : "#f85149");
+  }
 }
 function drawChart(hist, base) {
   const c = document.getElementById("chart"), ctx = c.getContext("2d");

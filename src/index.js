@@ -43,6 +43,18 @@ async function main() {
     log.warn("LIVE MOD AKTIF - GERCEK PARA ILE ISLEM YAPILACAK!");
     log.warn("Iptal icin Ctrl+C - 10 saniye bekleniyor...");
     await sleep(10_000);
+    // Baslangic dogrulamasi: API anahtarlari calisiyorsa hesap erisilebilir olmali
+    try {
+      const { getAccount } = await import("./exchange/binanceTr.js");
+      await getAccount();
+      log.info("Binance TR hesabi dogrulandi - API anahtarlari calisiyor.");
+    } catch (err) {
+      log.error(`Hesap dogrulanamadi: ${err.message}`);
+      log.error("API anahtarlarinizi ve Binance TR API erisimini kontrol edin. Cikiliyor.");
+      process.exit(1);
+    }
+  } else if (config.tradeMode === "signal") {
+    log.info("Sinyal modu: islem ACILMAZ, sadece sinyal bildirimi gonderilir.");
   } else {
     log.info(`Paper mod: ${config.paperBalance} TRY sanal bakiye ile simulasyon.`);
   }
@@ -93,6 +105,16 @@ async function main() {
       dailyPnl: risk.dailyPnl,
     },
     equityHistory,
+    signals: Object.fromEntries(
+      engines.filter((e) => e.lastSignal).map((e) => [e.symbol, e.lastSignal])
+    ),
+    charts: Object.fromEntries(
+      config.symbols.map((s) => [
+        s,
+        feed.getCandles(s).map((c) => ({ t: c.openTime, o: c.open, h: c.high, l: c.low, c: c.close })),
+      ])
+    ),
+    markers: portfolio.tradeLog.slice(-40),
   });
   const getHealth = () => ({
     status: "ok",

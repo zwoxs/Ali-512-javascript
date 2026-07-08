@@ -28,10 +28,13 @@ export class Portfolio {
     this.quote -= cost;
     this.positions.set(symbol, {
       qty: fill.qty,
+      initialQty: fill.qty, // piramit kademe boyutlari ilk girise gore hesaplanir
       entryPrice: fill.price,
       entryFee: fill.fee, // K/Z tam tur maliyetle hesaplanir (giris + cikis komisyonu)
       highWater: fill.price,
       openedAt: fill.ts,
+      addons: 0,
+      lastAddPrice: fill.price,
     });
   }
 
@@ -58,6 +61,23 @@ export class Portfolio {
       closedAt: fill.ts,
     });
     return pnl;
+  }
+
+  /**
+   * Piramit kademesini deftere isler: pozisyona ekleme yapilir,
+   * giris fiyati agirlikli ortalamayla guncellenir.
+   */
+  recordAddOn(symbol, fill) {
+    const pos = this.positions.get(symbol);
+    if (!pos) throw new Error(`${symbol} icin acik pozisyon yok.`);
+    const cost = fill.qty * fill.price + fill.fee;
+    this.quote -= cost;
+    pos.entryPrice = (pos.entryPrice * pos.qty + fill.price * fill.qty) / (pos.qty + fill.qty);
+    pos.qty = parseFloat((pos.qty + fill.qty).toPrecision(12));
+    pos.entryFee = (pos.entryFee || 0) + fill.fee;
+    pos.addons = (pos.addons || 0) + 1;
+    pos.lastAddPrice = fill.price;
+    if (fill.price > pos.highWater) pos.highWater = fill.price;
   }
 
   /**

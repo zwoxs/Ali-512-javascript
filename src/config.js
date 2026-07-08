@@ -109,6 +109,20 @@ export const config = {
   htfMultiple: num("HTF_MULTIPLE", 4),     // 1 HTF mumu = kac taban mum
   htfEmaPeriod: num("HTF_EMA_PERIOD", 20),
 
+  // ADX rejim filtresi: piyasa trendsiz/testere iken (ADX dusuk) islem acilmaz
+  adxFilter: bool("ADX_FILTER", false),
+  adxPeriod: num("ADX_PERIOD", 14),
+  adxMinimum: num("ADX_MINIMUM", 20),
+
+  // Piramitleme: kazanan pozisyona kademeli ekleme (0 = kapali)
+  pyramidMaxAddons: num("PYRAMID_MAX_ADDONS", 0),
+  pyramidTriggerPct: num("PYRAMID_TRIGGER_PCT", 2), // son girisin bu kadar % ustunde ekle
+  pyramidSizeFactor: num("PYRAMID_SIZE_FACTOR", 0.5), // her kademe = onceki boyut x faktor
+
+  // Portfoy seviyesi limitler (0 = kapali)
+  maxOpenPositions: num("MAX_OPEN_POSITIONS", 0),
+  maxExposurePct: num("MAX_EXPOSURE_PCT", 0), // pozisyonlardaki sermaye / toplam deger
+
   // Devre kesiciler
   maxDailyLossPct: num("MAX_DAILY_LOSS_PCT", 5),      // gunluk zarar limiti (baslangic sermayesine gore %)
   maxConsecutiveLosses: num("MAX_CONSECUTIVE_LOSSES", 3),
@@ -132,13 +146,14 @@ export const config = {
   // Bildirim
   telegramToken: str("TELEGRAM_BOT_TOKEN", ""),
   telegramChatId: str("TELEGRAM_CHAT_ID", ""),
+  discordWebhookUrl: str("DISCORD_WEBHOOK_URL", ""),
   dailyReportHour: num("DAILY_REPORT_HOUR", 21), // gunluk ozet raporu saati (yerel, -1 = kapali)
 };
 
 export function validateConfig(cfg = config) {
   const errors = [];
-  if (!["paper", "live"].includes(cfg.tradeMode))
-    errors.push(`TRADE_MODE 'paper' veya 'live' olmali (su an: ${cfg.tradeMode})`);
+  if (!["paper", "live", "signal"].includes(cfg.tradeMode))
+    errors.push(`TRADE_MODE 'paper', 'live' veya 'signal' olmali (su an: ${cfg.tradeMode})`);
   if (cfg.tradeMode === "live" && (!cfg.apiKey || !cfg.apiSecret))
     errors.push("Live mod icin BINANCE_TR_API_KEY ve BINANCE_TR_API_SECRET zorunlu.");
   if (!INTERVAL_MS[cfg.interval])
@@ -165,5 +180,11 @@ export function validateConfig(cfg = config) {
     errors.push("DONCHIAN_EXIT, DONCHIAN_ENTRY'den kucuk olmali.");
   if (cfg.supertrendPeriod <= 0 || cfg.supertrendMult <= 0)
     errors.push("SUPERTREND_PERIOD ve SUPERTREND_MULT pozitif olmali.");
+  if (cfg.pyramidMaxAddons > 0) {
+    if (cfg.pyramidSizeFactor <= 0 || cfg.pyramidSizeFactor > 1)
+      errors.push("PYRAMID_SIZE_FACTOR 0-1 arasinda olmali (kademeler kuculmeli).");
+    if (cfg.pyramidTriggerPct <= 0)
+      errors.push("PYRAMID_TRIGGER_PCT pozitif olmali.");
+  }
   return errors;
 }

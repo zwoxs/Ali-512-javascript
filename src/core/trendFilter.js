@@ -1,4 +1,4 @@
-import { ema } from "../indicators.js";
+import { ema, adx } from "../indicators.js";
 
 /**
  * Ust zaman dilimi (HTF) trend filtresi.
@@ -27,4 +27,15 @@ export function isUptrend(candles, cfg) {
   if (htfCloses.length < cfg.htfEmaPeriod + 1) return true;
   const e = ema(htfCloses, cfg.htfEmaPeriod);
   return htfCloses[htfCloses.length - 1] > e[e.length - 1];
+}
+
+/**
+ * ADX rejim filtresi: piyasa trendli mi? Trendsiz/testere piyasada (dusuk ADX)
+ * trend takip stratejileri arka arkaya kucuk zararlar uretir - girisleri engelle.
+ * Veri yetersizse true dondurur (filtre uygulanmaz).
+ */
+export function isTrendingMarket(candles, cfg) {
+  const values = adx(candles, cfg.adxPeriod);
+  if (!values.length) return true;
+  return values[values.length - 1] >= cfg.adxMinimum;
 }
