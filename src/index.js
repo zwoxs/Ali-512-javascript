@@ -12,6 +12,7 @@ import { startDashboard } from "./dashboard.js";
 import { correlationBlocked } from "./core/correlation.js";
 import { ApiHealth } from "./core/apiHealth.js";
 import { reconcile, parseBalances, formatDrift } from "./core/reconciler.js";
+import { newsBlocked } from "./core/newsSentiment.js";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -94,10 +95,13 @@ async function main() {
     return null;
   };
 
+  // Haber duyarlilik kapisi: coine girmeden guncel haberleri tarar (onbellekli)
+  const newsGate = config.newsFilter ? (symbol) => newsBlocked(symbol, config) : null;
+
   const engines = config.symbols.map(
     (symbol) => new Engine({
       symbol, strategy: strategyBySymbol[symbol], cfg: config,
-      portfolio, risk, broker, onTrade, correlationGuard, haltGate,
+      portfolio, risk, broker, onTrade, correlationGuard, haltGate, newsGate,
     })
   );
 

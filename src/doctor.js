@@ -103,6 +103,20 @@ async function main() {
   if (config.discordWebhookUrl) ok("Discord", "yapilandirilmis");
   else warn("Discord", "yapilandirilmamis (istege bagli)");
 
+  // 8) Haber filtresi
+  if (!config.newsFilter) {
+    warn("Haber filtresi", "kapali (istege bagli - NEWS_FILTER=true ile acin)");
+  } else {
+    try {
+      const { getSentiment } = await import("./core/newsSentiment.js");
+      const s = await getSentiment(config.symbols[0], config);
+      if (s.error) fail("Haber filtresi", `kaynak erisilemedi: ${s.error}`);
+      else ok("Haber filtresi", `${config.newsSource} calisiyor (${s.count} baslik, etiket: ${s.label})`);
+    } catch (err) {
+      fail("Haber filtresi", err.message);
+    }
+  }
+
   // Ozet
   console.log("");
   for (const r of results) {

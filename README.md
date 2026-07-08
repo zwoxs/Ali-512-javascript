@@ -20,6 +20,7 @@ için 21+; yoksa otomatik REST'e düşer).
 - 🎯 **Sembol başına strateji**: `SYMBOLS=BTCTRY:ema_rsi,ETHTRY:supertrend` — çoklu strateji portföyü
 - 📣 **Sinyal modu**: `TRADE_MODE=signal` — işlem açmadan sadece Telegram/Discord'a sinyal gönderir
 - 🕐 **Borsa saati senkronizasyonu** + canlı modda başlangıçta **hesap doğrulaması**
+- 📰 **Haber duyarlılık filtresi**: bir coine girmeden önce güncel haber başlıklarını tarar (CryptoPanic API veya RSS); hack/yasak/dava/çöküş gibi güçlü olumsuz haber akışında girişi **veto eder** — bir koruma filtresidir, tek başına alım yapmaz. Manuel inceleme: `npm run news BTCTRY`
 
 **Canlı işlem güvenilirliği (gerçek para katmanı)**
 - 🧾 **Hesap mutabakatı**: canlı modda bot durumu ile borsa bakiyeleri periyodik karşılaştırılır; sapma toleransı aşılırsa uyarı (isteğe bağlı yeni işlemleri durdurma)
@@ -62,14 +63,14 @@ için 21+; yoksa otomatik REST'e düşer).
 - 📱 **Telegram + Discord**: işlem bildirimleri, **günlük özet raporu**, ardışık hata alarmı
 - 🪵 **JSON log formatı** (`LOG_FORMAT=json`): Loki/ELK/CloudWatch gibi log toplayıcılara hazır
 - 🐳 **Docker + docker-compose + pm2** dağıtım dosyaları, **GitHub Actions CI**
-- ✅ **72 birim/entegrasyon testi** (`npm test`)
+- ✅ **80 birim/entegrasyon testi** (`npm test`)
 
 ## Kurulum
 
 ```bash
 node --version        # >= 18 (WebSocket icin >= 21 onerilir)
 cp .env.example .env  # ayarlari duzenleyin
-npm test              # 72 testin gectigini dogrulayin
+npm test              # 80 testin gectigini dogrulayin
 npm run doctor        # ortam tanilamasi (API erisimi, saat, izinler)
 ```
 
@@ -171,13 +172,14 @@ src/
 │   ├── liquidity.js          # Hacim/likidite filtresi
 │   ├── apiHealth.js          # API devre kesici (circuit breaker)
 │   ├── reconciler.js         # Hesap mutabakati (ic durum <-> borsa bakiyesi)
+│   ├── newsSentiment.js      # Haber cekme + anahtar kelime duyarlilik puanlama
 │   └── metrics.js            # Drawdown, Sharpe, Sortino, CAGR, Calmar, kar faktoru
 └── exchange/
     ├── wsFeed.js             # WebSocket kline akisi + otomatik REST fallback
     ├── market.js             # REST veri - yeniden deneme, rate-limit, disk onbellegi
     ├── brokers.js            # PaperBroker / LiveBroker (ayni arayuz) + LOT_SIZE
     └── binanceTr.js          # Binance TR Open API imzali istekler + saat senkronu
-test/                         # 72 birim + entegrasyon testi (node:test)
+test/                         # 80 birim + entegrasyon testi (node:test)
 profiles/                     # Hazir .env profilleri: guvenli.env, dengeli.env
 .github/workflows/ci.yml      # Her push'ta sozdizimi + test kosan CI
 Dockerfile / docker-compose.yml / ecosystem.config.cjs
@@ -212,6 +214,8 @@ Tam liste `.env.example` içinde. Öne çıkanlar:
 | `VOLUME_FILTER` | `false` | Düşük hacimli ince piyasada giriş engelleme |
 | `SESSION_FILTER` | `false` | UTC saat/gün penceresiyle giriş kısıtlama |
 | `API_MAX_CONSECUTIVE_ERRORS` | `5` | API devre kesici eşiği |
+| `NEWS_FILTER` | `false` | Girişten önce haber taraması (olumsuz haberde veto) |
+| `NEWS_SOURCE` | `cryptopanic` | `cryptopanic` (API) \| `rss` (akış URL'leri) |
 | `DISCORD_WEBHOOK_URL` | — | Discord bildirimleri (isteğe bağlı) |
 | `HTF_FILTER` | `false` | Üst zaman dilimi trend filtresi |
 | `TRAILING_STOP_PCT` | `0` | İz süren stop (0 = kapalı) |

@@ -182,6 +182,17 @@ export const config = {
   // Bildirim kisitlama: kritik olmayan bildirimler arasi minimum saniye (0 = kapali)
   notifyThrottleSec: num("NOTIFY_THROTTLE_SEC", 0),
 
+  // Haber duyarlilik filtresi: coine girmeden once guncel haberleri tarar,
+  // guclu olumsuz haber akisinda girisi engeller (bir koruma filtresi - sinyal degil).
+  newsFilter: bool("NEWS_FILTER", false),
+  newsSource: str("NEWS_SOURCE", "cryptopanic").toLowerCase(), // cryptopanic | rss
+  newsApiUrl: str("NEWS_API_URL", ""),
+  newsApiKey: str("NEWS_API_KEY", ""),
+  newsRssUrls: str("NEWS_RSS_URLS", ""), // rss modu: virgulle ayrilmis akis URL'leri
+  newsMinScore: num("NEWS_MIN_SCORE", -0.5), // ortalama duyarlilik bunun altindaysa girme
+  newsMinArticles: num("NEWS_MIN_ARTICLES", 3), // bu kadar baslik yoksa filtre uygulanmaz
+  newsCacheSec: num("NEWS_CACHE_SEC", 300), // haber onbellek suresi (rate-limit korumasi)
+
   // Devre kesiciler
   maxDailyLossPct: num("MAX_DAILY_LOSS_PCT", 5),      // gunluk zarar limiti (baslangic sermayesine gore %)
   maxConsecutiveLosses: num("MAX_CONSECUTIVE_LOSSES", 3),
@@ -255,6 +266,14 @@ export function validateConfig(cfg = config) {
     errors.push("CONFLUENCE_MIN_VOTES en az 1 olmali.");
   if (cfg.volumeFilter && (cfg.volumeMinRatio <= 0 || cfg.volumeAvgPeriod < 2))
     errors.push("VOLUME_MIN_RATIO pozitif ve VOLUME_AVG_PERIOD en az 2 olmali.");
+  if (cfg.newsFilter) {
+    if (!["cryptopanic", "rss"].includes(cfg.newsSource))
+      errors.push("NEWS_SOURCE 'cryptopanic' veya 'rss' olmali.");
+    if (cfg.newsSource === "cryptopanic" && !cfg.newsApiKey)
+      errors.push("NEWS_SOURCE=cryptopanic icin NEWS_API_KEY gerekli (cryptopanic.com ucretsiz kademe).");
+    if (cfg.newsSource === "rss" && !cfg.newsRssUrls)
+      errors.push("NEWS_SOURCE=rss icin NEWS_RSS_URLS gerekli (virgulle ayrilmis akis URL'leri).");
+  }
   if (cfg.sessionFilter) {
     if (!/^\d{1,2}-\d{1,2}$/.test(cfg.sessionHours))
       errors.push("SESSION_HOURS 'BAS-BIT' formatinda olmali (or. 6-22).");

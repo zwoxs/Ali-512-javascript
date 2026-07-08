@@ -21,7 +21,7 @@ export class Engine {
    * @param {function} [deps.onTrade] - islem sonrasi bildirim callback'i
    * @param {boolean} [deps.silent]  - true ise islem loglari yazilmaz (optimizasyon kosulari)
    */
-  constructor({ symbol, strategy, cfg, portfolio, risk, broker, onTrade, correlationGuard, haltGate, silent = false }) {
+  constructor({ symbol, strategy, cfg, portfolio, risk, broker, onTrade, correlationGuard, haltGate, newsGate, silent = false }) {
     this.symbol = symbol;
     this.strategy = strategy;
     this.cfg = cfg;
@@ -31,6 +31,7 @@ export class Engine {
     this.onTrade = onTrade || (() => {});
     this.correlationGuard = correlationGuard || null; // (symbol) => neden|null
     this.haltGate = haltGate || null;                 // () => neden|null (yeni girisi durdurur)
+    this.newsGate = newsGate || null;                 // async (symbol) => neden|null
     this.silent = silent;
     this.lastCandleTime = 0;
     this.lastSignal = null; // izleme paneli icin
@@ -153,6 +154,15 @@ export class Engine {
             `${this.symbol} AL sinyali volatilite bekcisine takildi: ` +
             `ATR %${((atrValue / currentPrice) * 100).toFixed(2)} > %${this.cfg.maxEntryAtrPct}`
           );
+          return;
+        }
+      }
+      // Haber duyarlilik kapisi (en pahali kontrol - en sona birakildi, tum filtreler
+      // gectikten sonra sadece giris an'inda ag istegi yapilir)
+      if (this.newsGate) {
+        const newsBlock = await this.newsGate(this.symbol);
+        if (newsBlock) {
+          if (!this.silent) log.warn(`${this.symbol} AL sinyali haber filtresine takildi: ${newsBlock}`);
           return;
         }
       }
