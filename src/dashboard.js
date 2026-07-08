@@ -135,6 +135,32 @@ refresh(); setInterval(refresh, 5000);
 </body>
 </html>`;
 
+/**
+ * Prometheus metin formatinda metrikler (/metrics).
+ * Grafana/Prometheus/Alertmanager gibi standart izleme yiginlarina baglanir.
+ */
+export function formatMetrics(status, health) {
+  const lines = [];
+  const metric = (name, help, value, type = "gauge") => {
+    if (value == null || Number.isNaN(value)) return;
+    lines.push(`# HELP ${name} ${help}`, `# TYPE ${name} ${type}`, `${name} ${value}`);
+  };
+  metric("bot_equity_try", "Toplam varlik degeri (TRY)", status.equity);
+  metric("bot_cash_try", "Nakit bakiye (TRY)", status.quote);
+  metric("bot_realized_pnl_try", "Gerceklesen toplam K/Z (TRY)", status.realizedPnl);
+  metric("bot_daily_pnl_try", "Bugunku K/Z (TRY)", status.risk?.dailyPnl);
+  metric("bot_trades_total", "Kapanan islem sayisi", status.trades, "counter");
+  metric("bot_wins_total", "Kazanan islem sayisi", status.wins, "counter");
+  metric("bot_open_positions", "Acik pozisyon sayisi", status.positions?.length);
+  metric("bot_consecutive_losses", "Ardisik zarar sayaci", status.risk?.consecutiveLosses);
+  metric("bot_kill_switch", "Acil fren durumu (1 = aktif)", status.risk?.killSwitch ? 1 : 0);
+  metric("bot_daily_limit_hit", "Gunluk zarar limiti (1 = asildi)", status.risk?.dailyLimitHit ? 1 : 0);
+  metric("bot_uptime_seconds", "Calisma suresi (sn)", health?.uptimeSec, "counter");
+  metric("bot_memory_mb", "Bellek kullanimi (MB)", health?.memoryMb);
+  metric("bot_feed_last_event_age_seconds", "Son veri olayindan gecen sure (sn)", health?.feed?.lastEventAgeSec);
+  return lines.join("\n") + "\n";
+}
+
 export function startDashboard(port, getStatus, getHealth = null) {
   if (!port) return null;
   const server = http.createServer((req, res) => {
@@ -145,6 +171,9 @@ export function startDashboard(port, getStatus, getHealth = null) {
       // Izleme sistemleri (uptime kontrolu, k8s liveness vb.) icin
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(getHealth ? getHealth() : { status: "ok" }));
+    } else if (req.url === "/metrics") {
+      res.writeHead(200, { "Content-Type": "text/plain; version=0.0.4" });
+      res.end(formatMetrics(getStatus(), getHealth ? getHealth() : {}));
     } else {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(PAGE);

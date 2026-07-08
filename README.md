@@ -16,7 +16,7 @@ için 21+; yoksa otomatik REST'e düşer).
 **Veri ve yürütme**
 - 📡 **WebSocket kline akışı**: gerçek zamanlı mum güncellemeleri; kopunca üstel geri çekilmeyle yeniden bağlanır, akış bayatlarsa **şeffaf REST fallback** — motor kaynağı bilmez
 - 🔁 **Tek kod yolu**: backtest, optimizasyon ve canlı işlem aynı `Engine`/`RiskManager`/`Portfolio` sınıflarından geçer
-- 🧩 **5 takılabilir strateji**: `ema_rsi` (trend), `macd` (momentum), `bollinger` (ortalamaya dönüş), `donchian` (Turtle kanal kırılımı), `supertrend` (ATR trend takibi)
+- 🧩 **6 takılabilir strateji**: `ema_rsi`, `macd`, `bollinger`, `donchian`, `supertrend` + **`confluence` (konsensüs)**: birden çok strateji oylar, ancak mutabakatta işlem açılır — tek göstergenin yanıltmasına karşı filtre
 - 🎯 **Sembol başına strateji**: `SYMBOLS=BTCTRY:ema_rsi,ETHTRY:supertrend` — çoklu strateji portföyü
 - 📣 **Sinyal modu**: `TRADE_MODE=signal` — işlem açmadan sadece Telegram/Discord'a sinyal gönderir
 - 🕐 **Borsa saati senkronizasyonu** + canlı modda başlangıçta **hesap doğrulaması**
@@ -29,6 +29,8 @@ için 21+; yoksa otomatik REST'e düşer).
 - ⏳ **Zaman aşımı çıkışı**: N mumdur kârsız bekleyen "ölü" pozisyon kapatılır
 - 🧭 **HTF trend filtresi** + 📐 **ADX rejim filtresi**: düşüş trendinde ve testere piyasada işlem yok
 - 🧺 **Portföy limitleri**: maks. pozisyon sayısı + maruziyet tavanı + minimum emir tutarı
+- 🔗 **Korelasyon koruması**: açık pozisyonla birlikte hareket eden sembolde (örn. BTC↔ETH) ikinci pozisyon açılmaz — aynı riske iki kez girilmez
+- 🧪 **Veri sağlığı bekçisi**: tek turda aşırı fiyat sıçraması (veri aksaklığı) o turu iptal eder — bozuk fiyatla stop/alım tetiklenmez
 - ⛔ **Günlük zarar limiti + ardışık zarar soğuması**: kötü günde bot kendini durdurur
 
 **Kâr koruma (maksimum kazanç kilitleme)**
@@ -39,25 +41,28 @@ için 21+; yoksa otomatik REST'e düşer).
 - 🧮 **Tam tur muhasebe**: K/Z hesabına giriş + çıkış komisyonu ve kayma dahildir
 
 **Araştırma araçları**
-- ⏪ **Backtest**: maks. düşüş, Sharpe, **Sortino, CAGR, Calmar, piyasada kalma oranı, en uzun zarar serisi** + CSV dışa aktarımı
+- ⏪ **Backtest**: maks. düşüş, Sharpe, **Sortino, CAGR, Calmar, piyasada kalma oranı, en uzun zarar serisi** + CSV dışa aktarımı + **maliyet duyarlılık testi** (2× komisyonda strateji ayakta mı?)
 - 🎲 **Monte Carlo sağlamlık analizi**: işlem sırası 1000 kez karıştırılır — getiri/düşüş dağılımı (p5/p50/p95) ve **iflas olasılığı** raporlanır; şanslı sıralamaya bağımlı sonuçlar ifşa edilir
 - 🔬 **Walk-forward optimizasyon**: parametreler eğitim diliminde aranır, görülmemiş test diliminde doğrulanır — **aşırı uyum (overfitting) uyarısıyla**
 - 💽 **Kline disk önbelleği**: optimizasyondaki yüzlerce koşum tek indirmeyle beslenir
 
 **Operasyon**
-- 📊 **Web izleme paneli**: özsermaye grafiği + **mum grafiği ve işlem işaretleri** (sembol seçici, son sinyal bilgisi) + `/api/health` endpoint'i
+- 📊 **Web izleme paneli**: özsermaye + mum grafiği ve işlem işaretleri + `/api/health` + **Prometheus `/metrics`** (Grafana/Alertmanager entegrasyonu)
+- 🩺 **`npm run doctor`**: canlıya geçmeden ortam tanılaması — Node sürümü, API erişimi, saat sapması, sembol doğrulama, yazma izinleri, anahtar kontrolü
 - 📄 **HTML performans raporu**: `npm run report` — işlem günlüğünden kümülatif K/Z, günlük K/Z ve sembol bazlı tek dosyalık rapor üretir
 - 💾 **Atomik durum kalıcılığı**: yeniden başlatmada pozisyonlar diskten kurtarılır
 - 📱 **Telegram + Discord**: işlem bildirimleri, **günlük özet raporu**, ardışık hata alarmı
+- 🪵 **JSON log formatı** (`LOG_FORMAT=json`): Loki/ELK/CloudWatch gibi log toplayıcılara hazır
 - 🐳 **Docker + docker-compose + pm2** dağıtım dosyaları, **GitHub Actions CI**
-- ✅ **55 birim/entegrasyon testi** (`npm test`)
+- ✅ **63 birim/entegrasyon testi** (`npm test`)
 
 ## Kurulum
 
 ```bash
 node --version        # >= 18 (WebSocket icin >= 21 onerilir)
 cp .env.example .env  # ayarlari duzenleyin
-npm test              # 55 testin gectigini dogrulayin
+npm test              # 63 testin gectigini dogrulayin
+npm run doctor        # ortam tanilamasi (API erisimi, saat, izinler)
 ```
 
 ### Hazır profiller (önerilen başlangıç)
@@ -140,10 +145,11 @@ src/
 ├── logger.js                 # Seviyeli log + trades.jsonl denetim izi
 ├── state.js                  # Atomik durum kaliciligi (data/state.json)
 ├── notifier.js               # Telegram + Discord bildirimleri (hata botu durdurmaz)
-├── report.js                 # Islem gunlugunden HTML performans raporu (npm run report)
+├── report.js                 # HTML performans raporu - sembol + strateji kirilimli
+├── doctor.js                 # Ortam tanilamasi (npm run doctor)
 ├── dashboard.js              # Web paneli: ozsermaye + mum grafigi + islem isaretleri
 ├── indicators.js             # SMA, EMA, RSI, MACD, Bollinger, ATR, Donchian, SuperTrend, ADX
-├── strategies/               # Strateji kayit defteri + 5 strateji (ortak sozlesme)
+├── strategies/               # Kayit defteri + 6 strateji (confluence dahil, ortak sozlesme)
 ├── core/
 │   ├── engine.js             # Karar dongusu - backtest ve canli icin TEK kod yolu
 │   ├── portfolio.js          # Tam tur muhasebe: bakiye, pozisyon, kismi satis, K/Z defteri
@@ -152,13 +158,14 @@ src/
 │   ├── backtester.js         # Yeniden kullanilabilir backtest cekirdegi
 │   ├── optimizer.js          # Izgara arama + walk-forward dogrulama
 │   ├── monteCarlo.js         # Islem sirasi karistirma - saglamlik/iflas analizi
+│   ├── correlation.js        # Pearson korelasyon + cifte risk korumasi
 │   └── metrics.js            # Drawdown, Sharpe, Sortino, CAGR, Calmar, kar faktoru
 └── exchange/
     ├── wsFeed.js             # WebSocket kline akisi + otomatik REST fallback
     ├── market.js             # REST veri - yeniden deneme, rate-limit, disk onbellegi
     ├── brokers.js            # PaperBroker / LiveBroker (ayni arayuz) + LOT_SIZE
     └── binanceTr.js          # Binance TR Open API imzali istekler + saat senkronu
-test/                         # 55 birim + entegrasyon testi (node:test)
+test/                         # 63 birim + entegrasyon testi (node:test)
 profiles/                     # Hazir .env profilleri: guvenli.env, dengeli.env
 .github/workflows/ci.yml      # Her push'ta sozdizimi + test kosan CI
 Dockerfile / docker-compose.yml / ecosystem.config.cjs
@@ -176,7 +183,7 @@ Tam liste `.env.example` içinde. Öne çıkanlar:
 |---|---|---|
 | `TRADE_MODE` | `paper` | `paper` = simülasyon, `live` = gerçek emir |
 | `SYMBOLS` | `BTCTRY` | Çoklu + sembol başına strateji: `BTCTRY:ema_rsi,ETHTRY:macd` |
-| `STRATEGY` | `ema_rsi` | `ema_rsi` \| `macd` \| `bollinger` \| `donchian` \| `supertrend` |
+| `STRATEGY` | `ema_rsi` | 5 strateji + `confluence` (konsensüs oylaması) |
 | `SIZING_MODE` | `percent` | `percent` \| `risk` (stop mesafesine göre) |
 | `STOP_MODE` | `percent` | `percent` \| `atr` (volatiliteye uyumlu) |
 | `PARTIAL_TP_PCT` | `0` | Kısmi kâr alma eşiği (0 = kapalı) |
@@ -188,6 +195,7 @@ Tam liste `.env.example` içinde. Öne çıkanlar:
 | `TRAILING_MODE` | `percent` | `atr` = chandelier kâr kilitleme |
 | `MAX_HOLD_CANDLES` | `0` | Kârsız pozisyon zaman aşımı |
 | `MIN_RR` | `0` | Minimum ödül/risk oranı zorlaması |
+| `CORRELATION_MAX` | `0` | Korele sembolde çifte pozisyon engeli (örn. 0.85) |
 | `DISCORD_WEBHOOK_URL` | — | Discord bildirimleri (isteğe bağlı) |
 | `HTF_FILTER` | `false` | Üst zaman dilimi trend filtresi |
 | `TRAILING_STOP_PCT` | `0` | İz süren stop (0 = kapalı) |

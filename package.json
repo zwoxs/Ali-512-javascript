@@ -1,7 +1,7 @@
 {
   "name": "binance-tr-coin-bot",
-  "version": "6.0.0",
-  "description": "Binance TR icin sermaye koruma odakli alim-satim botu: acil fren, chandelier stop, erken basabas, 5 strateji, Monte Carlo analizi (varsayilan: paper trading)",
+  "version": "7.0.0",
+  "description": "Binance TR icin sermaye koruma odakli alim-satim botu: konsensus stratejisi, korelasyon korumasi, Prometheus metrikleri, acil fren, Monte Carlo analizi (varsayilan: paper trading)",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
@@ -9,6 +9,7 @@
     "backtest": "node src/backtest.js",
     "optimize": "node src/optimize.js",
     "report": "node src/report.js",
+    "doctor": "node src/doctor.js",
     "test": "node --test"
   },
   "engines": {

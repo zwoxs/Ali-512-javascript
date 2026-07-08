@@ -13,7 +13,10 @@ const stamp = () => new Date().toISOString().replace("T", " ").slice(0, 19);
 
 function write(level, label, msg) {
   if (LEVELS[level] < threshold) return;
-  const line = `[${stamp()}] ${label} ${msg}`;
+  // json formati log toplayicilar (Loki, CloudWatch, ELK...) icin
+  const line = config.logFormat === "json"
+    ? JSON.stringify({ ts: new Date().toISOString(), level, msg })
+    : `[${stamp()}] ${label} ${msg}`;
   (level === "error" ? console.error : level === "warn" ? console.warn : console.log)(line);
   ensureDir(config.logDir);
   appendFileSync(path.join(config.logDir, "bot.log"), line + "\n");

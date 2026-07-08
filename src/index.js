@@ -9,6 +9,7 @@ import { Engine } from "./core/engine.js";
 import { saveState, loadState } from "./state.js";
 import { notify, formatTradeMessage } from "./notifier.js";
 import { startDashboard } from "./dashboard.js";
+import { correlationBlocked } from "./core/correlation.js";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -69,12 +70,25 @@ async function main() {
     await notify(formatTradeMessage(record));
   };
 
-  const engines = config.symbols.map(
-    (symbol) => new Engine({ symbol, strategy: strategyBySymbol[symbol], cfg: config, portfolio, risk, broker, onTrade })
-  );
-
   const feed = new MarketFeed(config.symbols, config.interval);
   await feed.init();
+
+  // Korelasyon korumasi: acik pozisyonla asiri korele sembolde yeni giris engellenir
+  const correlationGuard = (symbol) =>
+    correlationBlocked({
+      symbol,
+      openSymbols: [...portfolio.positions.keys()],
+      getCloses: (s) => feed.getCandles(s, config.correlationWindow + 1).map((c) => c.close),
+      maxCorr: config.correlationMax,
+      window: config.correlationWindow,
+    });
+
+  const engines = config.symbols.map(
+    (symbol) => new Engine({
+      symbol, strategy: strategyBySymbol[symbol], cfg: config,
+      portfolio, risk, broker, onTrade, correlationGuard,
+    })
+  );
 
   // --- Izleme paneli durumu ---
   const equityHistory = [];
@@ -103,6 +117,7 @@ async function main() {
       cooldownUntil: risk.cooldownUntil,
       consecutiveLosses: risk.consecutiveLosses,
       dailyPnl: risk.dailyPnl,
+      killSwitch: risk.killSwitch,
     },
     equityHistory,
     signals: Object.fromEntries(
@@ -147,6 +162,19 @@ async function main() {
     for (const engine of engines) {
       try {
         const { closedCandles, currentPrice } = await feed.snapshot(engine.symbol);
+        // Veri sagligi bekcisi: tek turda asiri fiyat sicramasi = muhtemel veri
+        // aksakligi. O tur islenmez - bozuk fiyatla stop/alim tetiklenmez.
+        const prevPrice = latestPrices[engine.symbol];
+        if (
+          config.sanityMaxJumpPct > 0 && prevPrice &&
+          Math.abs((currentPrice - prevPrice) / prevPrice) * 100 > config.sanityMaxJumpPct
+        ) {
+          log.error(
+            `${engine.symbol}: supheli fiyat sicramasi ${prevPrice} -> ${currentPrice} ` +
+            `(>%${config.sanityMaxJumpPct}) - bu tur atlandi, veri dogrulanacak.`
+          );
+          continue;
+        }
         latestPrices[engine.symbol] = currentPrice;
         await engine.step(closedCandles, currentPrice, Date.now());
         errorStreaks.set(engine.symbol, 0);

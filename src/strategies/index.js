@@ -9,6 +9,7 @@ import * as macdCross from "./macdCross.js";
 import * as bollingerRevert from "./bollingerRevert.js";
 import * as donchianBreakout from "./donchianBreakout.js";
 import * as supertrendFlip from "./supertrendFlip.js";
+import * as confluence from "./confluence.js";
 
 const REGISTRY = {
   ema_rsi: emaRsi,
@@ -16,6 +17,7 @@ const REGISTRY = {
   bollinger: bollingerRevert,
   donchian: donchianBreakout,
   supertrend: supertrendFlip,
+  confluence,
 };
 
 export function getStrategy(name) {

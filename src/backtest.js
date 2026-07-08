@@ -71,6 +71,23 @@ async function main() {
     console.log("\n(Monte Carlo icin en az 5 islem gerekir - atlandi.)");
   }
 
+  // Maliyet duyarlilik testi: komisyon + kayma 2 katina cikarsa strateji ayakta mi?
+  // Gercek dunyada maliyetler hep tahminden yuksektir - dar karli stratejileri ifsa eder.
+  if (m.tradeCount > 0) {
+    const { metrics: stressed } = await runBacktest({
+      klines,
+      cfg: { ...config, feePct: config.feePct * 2, slippagePct: config.slippagePct * 2 },
+      strategy, symbol, silent: true,
+    });
+    console.log("\n=============== MALIYET DUYARLILIGI (2x komisyon+kayma) ===============");
+    console.log(`Getiri: %${m.totalReturnPct.toFixed(2)} -> %${stressed.totalReturnPct.toFixed(2)}`);
+    if (m.totalReturnPct > 0 && stressed.totalReturnPct <= 0) {
+      console.log("⚠️  Strateji maliyet artisina dayanamiyor - kar marji cok ince, guvenmeyin.");
+    } else if (m.totalReturnPct > 0) {
+      console.log("✓ Strateji 2x maliyette de karli - maliyet marji makul.");
+    }
+  }
+
   // Ozsermaye egrisi ve islem listesi CSV olarak disari aktarilir (analiz icin)
   if (!existsSync(config.logDir)) mkdirSync(config.logDir, { recursive: true });
   const equityCsv = "bar,equity\n" + equityCurve.map((e, i) => `${i},${e.toFixed(2)}`).join("\n");

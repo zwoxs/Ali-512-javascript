@@ -34,6 +34,8 @@ const cfg = {
   donchianExit: 10,
   supertrendPeriod: 10,
   supertrendMult: 3,
+  confluenceStrategies: ["ema_rsi", "macd", "supertrend"],
+  confluenceMinVotes: 2,
 };
 
 function makeCandles(prices) {

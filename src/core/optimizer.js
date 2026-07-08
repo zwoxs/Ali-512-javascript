@@ -43,6 +43,11 @@ const GRIDS = {
     stopLossPct: [1.5, 2, 3],
     takeProfitPct: [4, 6, 10],
   },
+  confluence: {
+    confluenceMinVotes: [2, 3],
+    stopLossPct: [1.5, 2, 3],
+    takeProfitPct: [3, 4, 6],
+  },
 };
 
 /** Kartezyen carpim: {a:[1,2], b:[3]} -> [{a:1,b:3},{a:2,b:3}] */

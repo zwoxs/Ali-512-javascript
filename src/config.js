@@ -65,6 +65,7 @@ export const config = {
   interval: str("INTERVAL", "15m"),
   pollSeconds: num("POLL_SECONDS", 30),
   logLevel: str("LOG_LEVEL", "info").toLowerCase(),
+  logFormat: str("LOG_FORMAT", "text").toLowerCase(), // text | json (log toplayicilar icin)
 
   // Strateji
   strategy: str("STRATEGY", "ema_rsi").toLowerCase(),
@@ -82,6 +83,10 @@ export const config = {
   donchianExit: num("DONCHIAN_EXIT", 10),
   supertrendPeriod: num("SUPERTREND_PERIOD", 10),
   supertrendMult: num("SUPERTREND_MULT", 3),
+  // Konsensus (ensemble) stratejisi: uye stratejiler ve gereken minimum oy
+  confluenceStrategies: str("CONFLUENCE_STRATEGIES", "ema_rsi,macd,supertrend")
+    .toLowerCase().split(",").map((s) => s.trim()).filter(Boolean),
+  confluenceMinVotes: num("CONFLUENCE_MIN_VOTES", 2),
 
   // Sermaye ve boyutlama
   paperBalance: num("PAPER_BALANCE", 10000),
@@ -141,6 +146,15 @@ export const config = {
 
   // Minimum emir tutari (TRY): komisyonun kari yedigi kucuk emirleri engeller (0 = kapali)
   minOrderNotional: num("MIN_ORDER_NOTIONAL", 0),
+
+  // Korelasyon korumasi: acik pozisyonla getiri korelasyonu bu esigin ustundeki
+  // sembolde yeni pozisyon acilmaz - ayni riske iki kez girilmez (0 = kapali, 0-1 arasi)
+  correlationMax: num("CORRELATION_MAX", 0),
+  correlationWindow: num("CORRELATION_WINDOW", 50),
+
+  // Veri sagligi bekcisi: tek turda bu yuzdeden fazla fiyat sicramasi veri
+  // aksakligi sayilir ve o tur islenmez (0 = kapali)
+  sanityMaxJumpPct: num("SANITY_MAX_JUMP_PCT", 15),
 
   // Devre kesiciler
   maxDailyLossPct: num("MAX_DAILY_LOSS_PCT", 5),      // gunluk zarar limiti (baslangic sermayesine gore %)
@@ -207,6 +221,12 @@ export function validateConfig(cfg = config) {
   }
   if (!["percent", "atr"].includes(cfg.trailingMode))
     errors.push("TRAILING_MODE 'percent' veya 'atr' olmali.");
+  if (!["text", "json"].includes(cfg.logFormat))
+    errors.push("LOG_FORMAT 'text' veya 'json' olmali.");
+  if (cfg.correlationMax < 0 || cfg.correlationMax > 1)
+    errors.push("CORRELATION_MAX 0-1 arasinda olmali (or. 0.85).");
+  if (cfg.confluenceMinVotes < 1)
+    errors.push("CONFLUENCE_MIN_VOTES en az 1 olmali.");
   if (cfg.minRr > 0) {
     const rr = cfg.stopMode === "atr"
       ? cfg.atrTpMult / cfg.atrStopMult

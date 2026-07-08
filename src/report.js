@@ -24,6 +24,7 @@ function loadTrades() {
 function aggregate(records) {
   const closed = records.filter((r) => r.pnl != null);
   const bySymbol = {};
+  const byStrategy = {};
   let cumulative = 0;
   const cumSeries = [];
   const daily = {};
@@ -37,6 +38,10 @@ function aggregate(records) {
     s.trades++;
     if (t.pnl > 0) s.wins++;
     s.pnl += t.pnl;
+    const st = (byStrategy[t.strategy || "bilinmiyor"] ||= { trades: 0, wins: 0, pnl: 0 });
+    st.trades++;
+    if (t.pnl > 0) st.wins++;
+    st.pnl += t.pnl;
   }
 
   const wins = closed.filter((t) => t.pnl > 0);
@@ -50,6 +55,7 @@ function aggregate(records) {
     best: closed.length ? Math.max(...closed.map((t) => t.pnl)) : 0,
     worst: closed.length ? Math.min(...closed.map((t) => t.pnl)) : 0,
     bySymbol,
+    byStrategy,
     cumSeries,
     daily: Object.entries(daily).sort(([a], [b]) => a.localeCompare(b)),
     recent: closed.slice(-50).reverse(),
@@ -86,6 +92,11 @@ th{color:#8b949e;font-size:11px;text-transform:uppercase}
 <h2>Sembol Bazinda</h2>
 <table><thead><tr><th>Sembol</th><th>Islem</th><th>Kazanan</th><th>K/Z (TRY)</th></tr></thead><tbody>
 ${Object.entries(data.bySymbol).map(([s, v]) =>
+  `<tr><td>${s}</td><td>${v.trades}</td><td>${v.wins}</td><td class="${v.pnl >= 0 ? "pos" : "neg"}">${v.pnl.toFixed(2)}</td></tr>`).join("")}
+</tbody></table>
+<h2>Strateji Bazinda</h2>
+<table><thead><tr><th>Strateji</th><th>Islem</th><th>Kazanan</th><th>K/Z (TRY)</th></tr></thead><tbody>
+${Object.entries(data.byStrategy).map(([s, v]) =>
   `<tr><td>${s}</td><td>${v.trades}</td><td>${v.wins}</td><td class="${v.pnl >= 0 ? "pos" : "neg"}">${v.pnl.toFixed(2)}</td></tr>`).join("")}
 </tbody></table>
 <h2>Son Islemler</h2>

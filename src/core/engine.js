@@ -19,7 +19,7 @@ export class Engine {
    * @param {function} [deps.onTrade] - islem sonrasi bildirim callback'i
    * @param {boolean} [deps.silent]  - true ise islem loglari yazilmaz (optimizasyon kosulari)
    */
-  constructor({ symbol, strategy, cfg, portfolio, risk, broker, onTrade, silent = false }) {
+  constructor({ symbol, strategy, cfg, portfolio, risk, broker, onTrade, correlationGuard, silent = false }) {
     this.symbol = symbol;
     this.strategy = strategy;
     this.cfg = cfg;
@@ -27,9 +27,15 @@ export class Engine {
     this.risk = risk;
     this.broker = broker;
     this.onTrade = onTrade || (() => {});
+    this.correlationGuard = correlationGuard || null; // (symbol) => neden|null
     this.silent = silent;
     this.lastCandleTime = 0;
     this.lastSignal = null; // izleme paneli icin
+  }
+
+  /** Islem kaydina ortak alanlari ekler (denetim izi + strateji kirilimi icin). */
+  _record(fields) {
+    return { symbol: this.symbol, mode: this.cfg.tradeMode, strategy: this.strategy.name, ...fields };
   }
 
   _logTrade(record) {
@@ -101,10 +107,10 @@ export class Engine {
     // Sinyal modu: islem acilmaz, sadece bildirim gonderilir
     if (this.cfg.tradeMode === "signal") {
       if (signal !== "HOLD") {
-        const record = {
+        const record = this._record({
           side: signal === "BUY" ? "SINYAL-AL" : "SINYAL-SAT",
-          symbol: this.symbol, qty: 0, price: currentPrice, reason, mode: "signal",
-        };
+          qty: 0, price: currentPrice, reason,
+        });
         this._logTrade(record);
         await this.onTrade(record);
       }
@@ -113,7 +119,8 @@ export class Engine {
 
     if (signal === "BUY" && !this.portfolio.inPosition(this.symbol)) {
       const blocked = this.risk.canOpen() ||
-        this.risk.checkPortfolioLimits(this.portfolio, { [this.symbol]: currentPrice });
+        this.risk.checkPortfolioLimits(this.portfolio, { [this.symbol]: currentPrice }) ||
+        (this.correlationGuard && this.correlationGuard(this.symbol));
       if (blocked) {
         if (!this.silent) log.warn(`${this.symbol} AL sinyali engellendi: ${blocked}`);
         return;
@@ -158,11 +165,10 @@ export class Engine {
     if (!fill) return;
     fill.ts = ts;
     this.portfolio.recordAddOn(this.symbol, fill);
-    const record = {
-      side: "KADEME-AL", symbol: this.symbol, qty: fill.qty, price: fill.price,
+    const record = this._record({
+      side: "KADEME-AL", qty: fill.qty, price: fill.price,
       reason: `Piramit kademe ${nextAddon}/${this.cfg.pyramidMaxAddons} (+%${this.cfg.pyramidTriggerPct} hareket)`,
-      mode: this.cfg.tradeMode,
-    };
+    });
     this._logTrade(record);
     await this.onTrade(record);
   }
@@ -191,7 +197,7 @@ export class Engine {
     fill.ts = ts;
     this.portfolio.recordBuy(this.symbol, fill);
     if (atrValue) this.portfolio.getPosition(this.symbol).entryAtr = atrValue;
-    const record = { side: "AL", symbol: this.symbol, qty: fill.qty, price: fill.price, reason, mode: this.cfg.tradeMode };
+    const record = this._record({ side: "AL", qty: fill.qty, price: fill.price, reason });
     this._logTrade(record);
     await this.onTrade(record);
   }
@@ -205,7 +211,7 @@ export class Engine {
     fill.ts = ts;
     const pnl = this.portfolio.recordPartialSell(this.symbol, fill);
     this.risk.onTradeClosed(pnl, this.portfolio.initialQuote, { partial: true });
-    const record = { side: "KISMI-SAT", symbol: this.symbol, qty: fill.qty, price: fill.price, pnl, reason, mode: this.cfg.tradeMode };
+    const record = this._record({ side: "KISMI-SAT", qty: fill.qty, price: fill.price, pnl, reason });
     this._logTrade(record);
     await this.onTrade(record);
   }
@@ -218,12 +224,12 @@ export class Engine {
     fill.ts = ts;
     const pnl = this.portfolio.recordSell(this.symbol, fill);
     const breakers = this.risk.onTradeClosed(pnl, this.portfolio.initialQuote);
-    const record = { side: "SAT", symbol: this.symbol, qty: fill.qty, price: fill.price, pnl, reason, mode: this.cfg.tradeMode };
+    const record = this._record({ side: "SAT", qty: fill.qty, price: fill.price, pnl, reason });
     this._logTrade(record);
     await this.onTrade(record);
     if (breakers.dailyLimitHit && !this.silent) {
       log.warn(`DEVRE KESICI: Gunluk zarar limiti asildi - bugun yeni pozisyon acilmayacak.`);
-      await this.onTrade({ side: "UYARI", symbol: this.symbol, qty: 0, price, reason: "Gunluk zarar limiti asildi", mode: this.cfg.tradeMode });
+      await this.onTrade(this._record({ side: "UYARI", qty: 0, price, reason: "Gunluk zarar limiti asildi" }));
     }
   }
 }
