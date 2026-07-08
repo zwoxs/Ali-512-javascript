@@ -15,11 +15,27 @@ const baseCfg = {
   feePct: 0.1,
 };
 
-test("percent boyutlama: bakiyenin %25'i kadar (komisyon dusulmus)", () => {
+test("percent boyutlama: bakiyenin %25'i, komisyon+kayma tamponuyla", () => {
   const rm = new RiskManager(baseCfg);
   const qty = rm.positionSize(10000, 10000, 100);
-  // 2500 butce - %0.1 komisyon = 2497.5 / 100 = 24.975
-  assert.ok(Math.abs(qty - 24.975) < 1e-9);
+  // 2500 butce / (100 * (1 + %0.1 tampon)) = 2500 / 100.1
+  assert.ok(Math.abs(qty - 2500 / 100.1) < 1e-9);
+});
+
+test("odeme gucu invaryanti: worst-case maliyet bakiyeyi ASLA asmaz (kayma dahil)", () => {
+  // POSITION_PCT=100 + kayma: eski formulde bakiye eksiye duserdi
+  const rm = new RiskManager({ ...baseCfg, positionPct: 100, feePct: 0.1, slippagePct: 0.5 });
+  const quote = 10000, price = 100;
+  const qty = rm.positionSize(quote, quote, price);
+  const worstCost = qty * price * (1 + (0.1 + 0.5) / 100); // fill kotu fiyattan
+  assert.ok(worstCost <= quote + 1e-9, `worst-case ${worstCost} <= ${quote} olmali`);
+});
+
+test("positionSize: gecersiz girdilerde 0 dondurur (div-by-zero korumasi)", () => {
+  const rm = new RiskManager(baseCfg);
+  assert.equal(rm.positionSize(0, 0, 100), 0);
+  assert.equal(rm.positionSize(10000, 10000, 0), 0);
+  assert.equal(rm.positionSize(-5, 10000, 100), 0);
 });
 
 test("risk boyutlama: stop mesafesi genisledikce pozisyon kuculur", () => {

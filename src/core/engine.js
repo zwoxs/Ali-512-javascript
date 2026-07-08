@@ -178,7 +178,8 @@ export class Engine {
     if (!pos) return;
     const nextAddon = (pos.addons || 0) + 1;
     const qty = (pos.initialQty ?? pos.qty) * this.cfg.pyramidSizeFactor ** nextAddon;
-    const cost = qty * price;
+    // Carpimsal tamponla worst-case maliyet: bakiye eksiye dusmesin
+    const cost = qty * price * this.risk.costMultiplier();
     if (qty <= 0 || cost > this.portfolio.quote) {
       log.debug(`${this.symbol}: piramit kademesi icin yeterli bakiye yok.`);
       return;
@@ -211,6 +212,15 @@ export class Engine {
     if (this.cfg.minOrderNotional > 0 && qty * price < this.cfg.minOrderNotional) {
       if (!this.silent) log.warn(
         `${this.symbol}: emir tutari ${(qty * price).toFixed(2)} TRY < minimum ${this.cfg.minOrderNotional} TRY - atlandi.`
+      );
+      return;
+    }
+    // Odeme gucu invaryanti (savunma): worst-case maliyet bakiyeyi asamaz.
+    // positionSize zaten tampon birakir; bu ikinci kontrol her ihtimale karsi.
+    const worstCost = qty * price * this.risk.costMultiplier();
+    if (worstCost > this.portfolio.quote + 1e-9) {
+      if (!this.silent) log.warn(
+        `${this.symbol}: emir maliyeti ${worstCost.toFixed(2)} > bakiye ${this.portfolio.quote.toFixed(2)} TRY - atlandi.`
       );
       return;
     }

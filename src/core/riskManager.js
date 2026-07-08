@@ -70,12 +70,27 @@ export class RiskManager {
   }
 
   /**
+   * Komisyon + kayma maliyet carpani. Emrin GERCEK maliyeti carpimsaldir:
+   * kotu fiyat (1+kayma) VE komisyon (1+fee). Dogrusal toplam (fee+slip) ikinci
+   * derece terimi kacirdigi icin carpimsal kullanilir - bakiye kesinlikle eksiye
+   * dusmez.
+   */
+  costMultiplier() {
+    return (1 + this.cfg.feePct / 100) * (1 + (this.cfg.slippagePct || 0) / 100);
+  }
+
+  /**
    * Alinacak miktari hesaplar.
    * percent modu: bakiyenin sabit yuzdesi.
    * risk modu   : islem basina riske edilen sermaye / stop mesafesi
    *               (profesyonel boyutlama - stop genisse pozisyon kuculur).
+   *
+   * Miktar, komisyon + kayma tamponuyla hesaplanir: emir kotu fiyattan dolsa
+   * bile GERCEK maliyet butceyi (dolayisiyla bakiyeyi) asamaz - bakiye eksiye
+   * dusmez. Bu, "hata yapma luksu yok" invaryantidir.
    */
   positionSize(quoteBalance, equity, price, atrValue = null) {
+    if (!(price > 0) || !(quoteBalance > 0)) return 0;
     let budget;
     if (this.cfg.sizingMode === "risk") {
       const riskAmount = equity * (this.cfg.riskPerTradePct / 100);
@@ -84,8 +99,9 @@ export class RiskManager {
       budget = quoteBalance * (this.cfg.positionPct / 100);
     }
     budget = Math.min(budget, quoteBalance); // asla bakiyeden fazlasi degil
-    const fee = budget * (this.cfg.feePct / 100);
-    return Math.max((budget - fee) / price, 0);
+    // Tampon: worst-case maliyet = qty * price * costMultiplier <= budget
+    const effPrice = price * this.costMultiplier();
+    return Math.max(budget / effPrice, 0);
   }
 
   /**

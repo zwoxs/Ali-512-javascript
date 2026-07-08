@@ -56,9 +56,10 @@ export class LiveBroker {
   }
 
   /**
-   * Emri idempotent gonderir: ag hatasinda AYNI clientOrderId ile bir kez daha
-   * dener. Ilk deneme borsaya ulasip yaniti kaybolduysa, borsa ikinci emri ayni
-   * kimlik nedeniyle reddeder - boylece cift dolum onlenir.
+   * Emri gonderir. Her emir benzersiz clientOrderId tasir (borsada izlenebilir
+   * + tekillestirme icin). ORDER_RETRY acikken ag hatasinda AYNI kimlikle bir
+   * kez daha dener; kapaliyken (varsayilan) hata dogrudan yukari verilir -
+   * boylece belirsiz durumda cift dolum riski alinmaz, mutabakat devreye girer.
    */
   async _send(symbol, side, roundedQty, price) {
     const clientOrderId = makeClientOrderId(symbol, side);
@@ -66,6 +67,13 @@ export class LiveBroker {
     try {
       res = await placeMarketOrder(symbol, side, roundedQty, clientOrderId);
     } catch (err) {
+      if (!this.cfg.orderRetry) {
+        log.error(
+          `${symbol} ${side} emri BASARISIZ (${err.message}). ORDER_RETRY kapali - ` +
+          `emir tekrarlanmadi. Borsada gerceklesmis OLABILIR; mutabakat kontrol edecek.`
+        );
+        throw err;
+      }
       log.warn(`${symbol} ${side} emri hata verdi (${err.message}) - ayni kimlikle 1 kez daha deneniyor.`);
       res = await placeMarketOrder(symbol, side, roundedQty, clientOrderId);
     }

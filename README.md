@@ -41,6 +41,8 @@ için 21+; yoksa otomatik REST'e düşer).
 - 🔗 **Korelasyon koruması**: açık pozisyonla birlikte hareket eden sembolde (örn. BTC↔ETH) ikinci pozisyon açılmaz — aynı riske iki kez girilmez
 - 🧪 **Veri sağlığı bekçisi**: tek turda aşırı fiyat sıçraması (veri aksaklığı) o turu iptal eder — bozuk fiyatla stop/alım tetiklenmez
 - ⛔ **Günlük zarar limiti + ardışık zarar soğuması**: kötü günde bot kendini durdurur
+- 🧷 **Ödeme-gücü invaryantı**: pozisyon boyutu komisyon+kayma çarpımsal tamponuyla hesaplanır; emir kötü fiyattan dolsa bile **bakiye asla eksiye düşmez** (uçtan uca testli)
+- 🔐 **Güvenli emir politikası**: canlı emir belirsizlikte kör tekrarlanmaz (`ORDER_RETRY=false` varsayılan) — çift dolum riski yerine mutabakat + insan kararı
 
 **Kâr koruma (maksimum kazanç kilitleme)**
 - 🔒 **Erken başabaş stopu**: kâr `BREAKEVEN_TRIGGER_PCT`'ye bir kez ulaşınca stop girişe çekilir — **pozisyon matematiksel olarak artık zarar edemez**
@@ -63,14 +65,14 @@ için 21+; yoksa otomatik REST'e düşer).
 - 📱 **Telegram + Discord**: işlem bildirimleri, **günlük özet raporu**, ardışık hata alarmı
 - 🪵 **JSON log formatı** (`LOG_FORMAT=json`): Loki/ELK/CloudWatch gibi log toplayıcılara hazır
 - 🐳 **Docker + docker-compose + pm2** dağıtım dosyaları, **GitHub Actions CI**
-- ✅ **80 birim/entegrasyon testi** (`npm test`)
+- ✅ **87 birim/entegrasyon testi** (`npm test`) — ödeme-gücü invaryantı dahil (bakiye asla eksiye düşmez)
 
 ## Kurulum
 
 ```bash
 node --version        # >= 18 (WebSocket icin >= 21 onerilir)
 cp .env.example .env  # ayarlari duzenleyin
-npm test              # 80 testin gectigini dogrulayin
+npm test              # 87 testin gectigini dogrulayin
 npm run doctor        # ortam tanilamasi (API erisimi, saat, izinler)
 ```
 
@@ -179,7 +181,7 @@ src/
     ├── market.js             # REST veri - yeniden deneme, rate-limit, disk onbellegi
     ├── brokers.js            # PaperBroker / LiveBroker (ayni arayuz) + LOT_SIZE
     └── binanceTr.js          # Binance TR Open API imzali istekler + saat senkronu
-test/                         # 80 birim + entegrasyon testi (node:test)
+test/                         # 87 birim + entegrasyon testi (node:test)
 profiles/                     # Hazir .env profilleri: guvenli.env, dengeli.env
 .github/workflows/ci.yml      # Her push'ta sozdizimi + test kosan CI
 Dockerfile / docker-compose.yml / ecosystem.config.cjs

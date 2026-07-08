@@ -179,6 +179,12 @@ export const config = {
   apiMaxConsecutiveErrors: num("API_MAX_CONSECUTIVE_ERRORS", 5),
   apiCircuitCooldownMin: num("API_CIRCUIT_COOLDOWN_MIN", 5),
 
+  // Emir yeniden deneme (live): ag hatasinda ayni clientOrderId ile 1 kez daha
+  // dener. Yalnizca borsanin clientOrderId ile TEKILLESTIRME yaptigindan EMINSENIZ
+  // acin - aksi halde kayip yanit senaryosunda cift dolum riski. Varsayilan KAPALI:
+  // hata durumunda emir gonderilmez, mutabakat + siz karar verirsiniz (en guvenli).
+  orderRetry: bool("ORDER_RETRY", false),
+
   // Bildirim kisitlama: kritik olmayan bildirimler arasi minimum saniye (0 = kapali)
   notifyThrottleSec: num("NOTIFY_THROTTLE_SEC", 0),
 

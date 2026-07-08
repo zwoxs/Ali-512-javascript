@@ -181,6 +181,13 @@ async function main() {
     try {
       const { getAccount } = await import("./exchange/binanceTr.js");
       const balances = parseBalances(await getAccount());
+      // Yanit ayristirilamadiysa (API semasi degismis olabilir) yanlis alarm/durdurma
+      // yapma - bakiyeleri sifir sanip her sey sapma gorunur. Uyar ve gec.
+      if (Object.keys(balances).length === 0) {
+        lastReconcile = Date.now();
+        log.warn("Hesap mutabakati: borsa bakiyeleri ayristirilamadi (API semasi degismis olabilir) - atlandi.");
+        return;
+      }
       const { ok, drifts } = reconcile(portfolio, balances, {
         tolerancePct: config.reconcileTolerancePct,
         quoteAsset: "TRY",
