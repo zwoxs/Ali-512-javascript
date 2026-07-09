@@ -77,6 +77,9 @@ class IntentParser:
             tmap = {"telefon": "phone", "mobil": "phone",
                     "bilgisayar": "desktop", "masaüstü": "desktop"}
             return {"action": "ui_switch", "params": {"target": tmap[m.group(1)]}}
+        # "yanıma gel" / "telefona geç" → telefona geç
+        if re.search(r"\b(yanıma gel|telefona geç|telefonuma geç|cebime geç)\b", t):
+            return {"action": "ui_switch", "params": {"target": "phone"}}
 
         # takma ad: "takma ad ekle kulaklık AirPods Pro"
         m = re.search(r"takma ad(?:ı)?\s*(?:ekle|ver|tanımla)?\s+(\S+)\s+(.+)", t)

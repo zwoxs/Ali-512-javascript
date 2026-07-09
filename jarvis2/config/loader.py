@@ -19,6 +19,7 @@ _DEFAULTS = {
     "require_wake_word": True,
     "ai_model": "llama-3.3-70b-versatile",
     "ai_fallback_model": "llama-3.1-8b-instant",
+    "auto_follow_phone": True,
 }
 
 

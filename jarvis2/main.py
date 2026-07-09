@@ -67,8 +67,10 @@ def build_system():
     companion = CompanionServer(orchestrator, settings=settings)
     orchestrator.companion = companion
 
-    # proaktif izleyici (pil, hatırlatıcı) — bildirim callback'i sonra bağlanır
-    proactive = Proactive(memory=memory, smart_home=smart_home)
+    # proaktif izleyici (pil, hatırlatıcı, telefon takibi) — bildirim callback'i sonra bağlanır
+    proactive = Proactive(memory=memory, smart_home=smart_home,
+                          bluetooth=bluetooth, companion=companion,
+                          auto_follow_phone=settings.get("auto_follow_phone", True))
 
     return {
         "settings": settings, "orchestrator": orchestrator,

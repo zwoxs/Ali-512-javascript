@@ -11,5 +11,6 @@
   "search_results_count": 3,
   "require_wake_word": true,
   "ai_model": "llama-3.3-70b-versatile",
-  "ai_fallback_model": "llama-3.1-8b-instant"
+  "ai_fallback_model": "llama-3.1-8b-instant",
+  "auto_follow_phone": true
 }

@@ -187,6 +187,10 @@ _PAGE_HTML = r"""<!doctype html>
         border-radius:20px; padding:12px 16px; font-size:16px; font-family:inherit; outline:none; }
   .bar button{ background:var(--acc); color:var(--bg); border:none; border-radius:20px;
         padding:0 18px; font-weight:bold; font-family:inherit; cursor:pointer; font-size:14px; }
+  .bar .icon{ background:var(--bg3); color:var(--acc); border:1px solid #16323c;
+        min-width:48px; padding:0; font-size:20px; }
+  .bar .icon.on{ background:#ff5252; color:#fff; border-color:#ff5252;
+        animation:pulse 1s infinite; }
   .reactor{ width:90px; height:90px; margin:6px auto; border-radius:50%;
         background:radial-gradient(circle,#fff 0%,var(--acc) 35%,transparent 70%);
         box-shadow:0 0 24px var(--acc); animation:pulse 2s infinite; }
@@ -223,8 +227,10 @@ _PAGE_HTML = r"""<!doctype html>
   </div>
 
   <div class="bar">
-    <input id="inp" placeholder="Komut yazın, Efendim…" autocomplete="off"
+    <button id="mic" class="icon" onclick="toggleMic()" title="Sesli komut">🎤</button>
+    <input id="inp" placeholder="Konuşun veya yazın, Efendim…" autocomplete="off"
            onkeydown="if(event.key==='Enter')go()">
+    <button id="snd" class="icon" onclick="toggleSound()" title="Sesli cevap">🔊</button>
     <button onclick="go()">➤</button>
   </div>
 
@@ -240,17 +246,58 @@ _PAGE_HTML = r"""<!doctype html>
     d.className = 'msg ' + cls; d.textContent = text;
     chat.appendChild(d); chat.scrollTop = chat.scrollHeight;
   }
+
+  // ---- Telefon hoparlöründen sesli cevap (Web Speech Synthesis) ----
+  let speakOn = true;
+  const synth = window.speechSynthesis;
+  function speak(t){
+    if(!speakOn || !synth || !t) return;
+    try{
+      const u = new SpeechSynthesisUtterance(t);
+      u.lang='tr-TR'; u.rate=1.0; u.pitch=1.0;
+      const v=(synth.getVoices()||[]).find(x=>x.lang && x.lang.toLowerCase().startsWith('tr'));
+      if(v) u.voice=v;
+      synth.cancel(); synth.speak(u);
+    }catch(e){}
+  }
+  function toggleSound(){
+    speakOn=!speakOn;
+    document.getElementById('snd').textContent = speakOn?'🔊':'🔇';
+    if(!speakOn && synth) synth.cancel();
+  }
+
   async function send(text){
     add(text, 'me');
     try{
       const r = await fetch('/api/command', {method:'POST',
         headers:{'Content-Type':'application/json'}, body:JSON.stringify({text})});
       const j = await r.json();
-      if (j.response) add(j.response, 'jv');
+      if (j.response){ add(j.response, 'jv'); speak(j.response); }
     }catch(e){ add('Bağlantı hatası', 'jv'); }
   }
   function go(){ const i=document.getElementById('inp'); const t=i.value.trim();
     if(t){ send(t); i.value=''; } }
+
+  // ---- Telefon mikrofonundan sesli komut (Web Speech Recognition) ----
+  let rec=null, listening=false;
+  function setMic(on){
+    listening=on;
+    const m=document.getElementById('mic');
+    m.textContent = on?'🔴':'🎤'; m.classList.toggle('on', on);
+  }
+  function toggleMic(){
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if(!SR){ add('Bu tarayıcı sesli komutu desteklemiyor, Efendim.', 'jv'); return; }
+    if(listening){ try{rec.stop();}catch(e){} return; }
+    rec = new SR(); rec.lang='tr-TR'; rec.interimResults=false; rec.maxAlternatives=1;
+    setMic(true);
+    rec.onresult = e => { const t = e.results[0][0].transcript; if(t) send(t); };
+    rec.onerror = () => setMic(false);
+    rec.onend = () => setMic(false);
+    try{ rec.start(); }catch(e){ setMic(false); }
+  }
+  // speechSynthesis sesleri geç yüklenebilir
+  if(synth) synth.onvoiceschanged = ()=>{};
 
   async function poll(){
     try{

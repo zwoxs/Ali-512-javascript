@@ -291,7 +291,18 @@ web arayüzü** yayınlar (`companion_server.py`, ek paket gerekmez).
 - Cihaz türü addan otomatik anlaşılır (iPhone/Galaxy→telefon,
   JBL/hoparlör→ses, AirPods/buds→kulaklık).
 - HUD → **MOBİL** sekmesinden adresi görür, modu elle de değiştirebilirsiniz;
-  ya da `arayüzü telefona/bilgisayara geçir` deyin.
+  ya da `arayüzü telefona/bilgisayara geçir` / `yanıma gel` deyin.
+
+**Telefonda tam sesli asistan:** Companion web arayüzünde 🎤 mikrofon butonu
+(tarayıcı Web Speech Recognition, tr-TR) ile konuşursunuz; JARVIS cevabı
+**telefonun hoparlöründen** sesli verir (Web Speech Synthesis). Böylece
+bilgisayardan kalktığınızda JARVIS telefonunuzda yanınızda gelir. 🔊 ile
+sesli cevabı aç/kapatabilirsiniz.
+
+**Otomatik takip (`auto_follow_phone`):** Proaktif izleyici, Bluetooth'ta bir
+telefon bağlandığını görünce arayüzü kendiliğinden telefon moduna alır ve
+"yanınızdayım" bildirimi gönderir; telefon ayrılınca masaüstüne döner.
+`config/settings.json → auto_follow_phone: false` ile kapatılır.
 
 Telefon ve masaüstü düzenleri gerçek tarayıcıda (Chromium/Playwright) doğrulanmıştır.
 
