@@ -24,6 +24,9 @@ from modules.smart_home import SmartHome
 from modules.whatsapp import WhatsApp
 from modules.daily_planner import DailyPlanner
 from modules.weather import Weather
+from modules.google_search import WebSearch
+from modules.system_control import SystemControl
+from modules.proactive import Proactive
 from voice.output import VoiceOutput
 from voice.input import VoiceInput
 from core.orchestrator import Orchestrator
@@ -40,6 +43,8 @@ def build_system():
     whatsapp = WhatsApp(memory=memory)
     planner = DailyPlanner(ai_brain=ai_brain)
     weather = Weather()
+    web_search = WebSearch(max_results=settings.get("search_results_count", 3))
+    system_control = SystemControl()
 
     orchestrator = Orchestrator(
         settings=settings,
@@ -50,11 +55,18 @@ def build_system():
         planner=planner,
         voice_output=voice_output,
         weather=weather,
+        web_search=web_search,
+        system_control=system_control,
     )
+
+    # proaktif izleyici (pil, hatırlatıcı) — bildirim callback'i sonra bağlanır
+    proactive = Proactive(memory=memory, smart_home=smart_home)
+
     return {
         "settings": settings, "orchestrator": orchestrator,
         "voice_output": voice_output, "voice_input_cls": VoiceInput,
         "smart_home": smart_home, "ai_brain": ai_brain, "weather": weather,
+        "proactive": proactive,
     }
 
 
@@ -75,7 +87,17 @@ def run_ui(sys_dict):
         weather=sys_dict["weather"],
         settings=settings,
     )
-    hud.run()
+
+    # proaktif bildirimleri HUD toast/callback'ine yönlendir
+    orch = sys_dict["orchestrator"]
+    proactive = sys_dict["proactive"]
+    proactive.notify = lambda m: orch._notify(m)
+    proactive.start()
+
+    try:
+        hud.run()
+    finally:
+        proactive.stop()
 
 
 # =====================================================================
@@ -102,6 +124,9 @@ def run_console(sys_dict):
     voice_mode = "--voice" in sys.argv
 
     orchestrator.set_notify_callback(lambda m: print(f"\n{m}\n> ", end=""))
+    proactive = sys_dict["proactive"]
+    proactive.notify = lambda m: orchestrator._notify(m)
+    proactive.start()
     print_status(settings, smart_home, ai_brain)
 
     greeting = orchestrator.handle("günaydın")
@@ -153,6 +178,7 @@ def run_console(sys_dict):
             print(f"JARVIS: {resp}\n")
             voice_output.speak(resp, blocking=False)
     finally:
+        proactive.stop()
         if voice_input:
             voice_input.stop()
 

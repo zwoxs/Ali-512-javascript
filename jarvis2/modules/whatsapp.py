@@ -12,6 +12,12 @@ import time
 import urllib.parse
 import webbrowser
 
+try:
+    import pywhatkit  # opsiyonel: otomatik gönderim
+    _PYWHATKIT_OK = True
+except Exception:
+    _PYWHATKIT_OK = False
+
 
 class WhatsApp:
     def __init__(self, memory=None):
@@ -74,6 +80,27 @@ class WhatsApp:
 
         self.message_log.append({"contact": name, "message": message, "ts": time.time()})
         return f"{name} ile sohbet açıldı. Mesaj hazır — göndermek için Enter'a basın, Efendim."
+
+    def send_message_auto(self, contact: str, message: str, wait: int = 15) -> str:
+        """pywhatkit ile mesajı OTOMATİK gönderir (Enter'a basmaya gerek yok).
+
+        pywhatkit kurulu değilse manuel send_message'a düşer.
+        """
+        if not _PYWHATKIT_OK:
+            return self.send_message(contact, message)
+        name, number = self._resolve_contact(contact)
+        if not number:
+            return (f"'{contact}' için numara bulamadım, Efendim.")
+        try:
+            pywhatkit.sendwhatmsg_instantly(
+                phone_no=f"+{number}", message=message,
+                wait_time=wait, tab_close=True, close_time=3,
+            )
+            self.message_log.append({"contact": name, "message": message,
+                                     "ts": time.time(), "auto": True})
+            return f"{name} kişisine mesaj otomatik gönderildi, Efendim."
+        except Exception as e:
+            return f"Otomatik gönderim başarısız ({e}); manuel moda geçiliyor."
 
     # ---------- toplu ----------
     def broadcast_message(self, contacts: list, message: str) -> str:

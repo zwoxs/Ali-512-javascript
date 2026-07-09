@@ -28,7 +28,8 @@ _AY = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
 
 class Orchestrator:
     def __init__(self, settings, memory, ai_brain=None, smart_home=None,
-                 whatsapp=None, planner=None, voice_output=None, weather=None):
+                 whatsapp=None, planner=None, voice_output=None, weather=None,
+                 web_search=None, system_control=None):
         self.settings = settings
         self.memory = memory
         self.ai_brain = ai_brain
@@ -37,6 +38,8 @@ class Orchestrator:
         self.planner = planner
         self.voice_output = voice_output
         self.weather = weather
+        self.web_search = web_search
+        self.system_control = system_control
         self.parser = IntentParser(settings)
 
         # kısa süreli bağlam
@@ -208,6 +211,8 @@ class Orchestrator:
         message = p.get("message", "")
         self.context["last_contact"] = contact
         self.stats["messages"] += 1
+        if self.settings.get("whatsapp_auto_send"):
+            return self.whatsapp.send_message_auto(contact, message)
         return self.whatsapp.send_message(contact, message)
 
     def _act_list_contacts(self, p):
@@ -290,9 +295,52 @@ class Orchestrator:
             return random.choice(NOT_FOUND)
         self.context["last_query"] = query
         self.stats["searches"] += 1
+
+        # önce gerçek sonuç almayı dene
+        if self.web_search:
+            summary = self.web_search.summary(query)
+            if summary:
+                return summary
+            self.web_search.open_in_browser(query)
+            return f"Doğrudan bir cevap bulamadım; '{query}' için tarayıcıda arama açtım, Efendim."
+
         url = "https://www.google.com/search?q=" + urllib.parse.quote(query)
         webbrowser.open(url)
         return f"'{query}' için arama açılıyor, Efendim."
+
+    # ---------- sistem kontrolü ----------
+    def _sc_guard(self):
+        return self.system_control is not None
+
+    def _act_set_volume(self, p):
+        if not self._sc_guard():
+            return "Sistem kontrol modülü yüklü değil, Efendim."
+        return self.system_control.set_volume(p.get("percent", 50))
+
+    def _act_mute_system(self, p):
+        if not self._sc_guard():
+            return "Sistem kontrol modülü yüklü değil, Efendim."
+        return self.system_control.mute()
+
+    def _act_lock(self, p):
+        if not self._sc_guard():
+            return "Sistem kontrol modülü yüklü değil, Efendim."
+        return self.system_control.lock_screen()
+
+    def _act_sleep(self, p):
+        if not self._sc_guard():
+            return "Sistem kontrol modülü yüklü değil, Efendim."
+        return self.system_control.sleep()
+
+    def _act_screenshot(self, p):
+        if not self._sc_guard():
+            return "Sistem kontrol modülü yüklü değil, Efendim."
+        return self.system_control.screenshot()
+
+    def _act_media(self, p):
+        if not self._sc_guard():
+            return "Sistem kontrol modülü yüklü değil, Efendim."
+        return self.system_control.media(p.get("cmd", "play_pause"))
 
     # ---------- hava durumu ----------
     def _act_weather(self, p):

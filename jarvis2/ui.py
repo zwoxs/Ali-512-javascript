@@ -19,6 +19,8 @@ from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from config.loader import save_settings
+
 try:
     import psutil
     _PSUTIL_OK = True
@@ -79,6 +81,8 @@ class JarvisHUD:
             "saat kaç", "tarih", "günaydın", "hava durumu", "istatistik",
             "priz aç", "priz kapat", "priz durumu", "lamba aç", "lamba kapat",
             "whatsapp aç", "whatsapp kişileri listele", "yardım",
+            "ekranı kilitle", "ekran görüntüsü al", "uyku moduna al",
+            "ses seviyesi 50", "sonraki şarkı", "önceki şarkı", "müziği duraklat",
             "/help", "/clear", "/theme CYAN", "/theme GREEN", "/theme MATRIX",
             "/exit", "/stats",
         ]
@@ -210,6 +214,7 @@ class JarvisHUD:
             ("Priz Aç", "priz aç"), ("Priz Kapat", "priz kapat"),
             ("WhatsApp", "whatsapp aç"), ("Hava", "hava durumu"),
             ("Plan", "günaydın"), ("İstatistik", "istatistik"),
+            ("Kilitle", "ekranı kilitle"), ("Ekran G.", "ekran görüntüsü al"),
         ]
         for i, (label, cmd) in enumerate(quick):
             b = tk.Button(grid, text=label, bg=BG3, fg=FG, bd=0,
@@ -270,6 +275,7 @@ class JarvisHUD:
         self._build_reminder_tab()
         self._build_stats_tab()
         self._build_calendar_tab()
+        self._build_settings_tab()
 
     # ---- TERMİNAL ----
     def _build_terminal_tab(self):
@@ -283,6 +289,16 @@ class JarvisHUD:
         self.chat.tag_config("user", foreground="#7fdbff")
         self.chat.tag_config("jarvis", foreground=self.accent)
         self.chat.tag_config("sys", foreground=FG_DIM, font=("Consolas", 9))
+
+        # sağ tık menüsü
+        self.chat_menu = tk.Menu(self.chat, tearoff=0, bg=BG2, fg=FG,
+                                 activebackground=self.accent, activeforeground=BG)
+        self.chat_menu.add_command(label="Kopyala", command=self._copy_selection)
+        self.chat_menu.add_command(label="Tümünü Seç", command=self._select_all_chat)
+        self.chat_menu.add_separator()
+        self.chat_menu.add_command(label="Temizle",
+                                   command=lambda: self._handle_response("", "__CLEAR__"))
+        self.chat.bind("<Button-3>", self._show_chat_menu)
 
         entry_row = tk.Frame(tab, bg=BG2)
         entry_row.pack(fill="x", padx=4, pady=(0, 4))
@@ -461,6 +477,87 @@ class JarvisHUD:
         self.cal_grid = tk.Frame(tab, bg=BG)
         self.cal_grid.pack(fill="both", expand=True, padx=12, pady=8)
         self._draw_calendar()
+
+    # ---- AYARLAR ----
+    def _build_settings_tab(self):
+        tab = tk.Frame(self.nb, bg=BG)
+        self.nb.add(tab, text="AYARLAR")
+        self._setting_vars = {}
+
+        fields = [
+            ("assistant_name", "Asistan adı"),
+            ("wake_word", "Uyanma kelimesi"),
+            ("owner_name", "Hitap"),
+            ("tts_voice", "TTS ses (edge-tts)"),
+            ("tts_rate", "Konuşma hızı (wpm)"),
+            ("search_results_count", "Arama sonuç sayısı"),
+        ]
+        for i, (key, label) in enumerate(fields):
+            row = tk.Frame(tab, bg=BG)
+            row.pack(fill="x", padx=20, pady=6)
+            tk.Label(row, text=label, bg=BG, fg=FG, width=22, anchor="w",
+                     font=("Consolas", 10)).pack(side="left")
+            var = tk.StringVar(value=str(self.settings.get(key, "")))
+            self._setting_vars[key] = var
+            tk.Entry(row, textvariable=var, bg=BG2, fg=self.accent, bd=0,
+                     insertbackground=self.accent, font=("Consolas", 11)).pack(
+                side="left", fill="x", expand=True, ipady=4, padx=6)
+
+        # WhatsApp otomatik gönderim
+        row = tk.Frame(tab, bg=BG)
+        row.pack(fill="x", padx=20, pady=6)
+        self._wa_auto_var = tk.BooleanVar(value=bool(self.settings.get("whatsapp_auto_send")))
+        tk.Checkbutton(row, text="WhatsApp otomatik gönderim (pywhatkit)",
+                       variable=self._wa_auto_var, bg=BG, fg=FG,
+                       selectcolor=BG2, activebackground=BG, activeforeground=self.accent,
+                       font=("Consolas", 10)).pack(side="left")
+
+        tk.Button(tab, text="💾 KAYDET", bg=BG3, fg=self.accent, bd=0,
+                  activebackground=self.accent, activeforeground=BG,
+                  font=("Consolas", 11, "bold"), cursor="hand2",
+                  command=self._save_settings).pack(pady=16)
+        tk.Label(tab, text="Değişiklikler kaydedilince anında uygulanır.",
+                 bg=BG, fg=FG_DIM, font=("Consolas", 9)).pack()
+
+    def _save_settings(self):
+        for key, var in self._setting_vars.items():
+            val = var.get().strip()
+            # sayısal alanları dönüştür
+            if key in ("tts_rate", "search_results_count"):
+                try:
+                    val = int(val)
+                except ValueError:
+                    continue
+            self.settings[key] = val
+        self.settings["whatsapp_auto_send"] = self._wa_auto_var.get()
+        try:
+            save_settings(self.settings)
+        except Exception as e:
+            self._toast(f"Kaydedilemedi: {e}")
+            return
+        # canlı uygula
+        self.orch.reload_settings(self.settings)
+        if self.voice_output:
+            self.voice_output.reload_settings(self.settings)
+        self._toast("Ayarlar kaydedildi")
+
+    # ---- sağ tık menüsü yardımcıları ----
+    def _show_chat_menu(self, event):
+        try:
+            self.chat_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.chat_menu.grab_release()
+
+    def _copy_selection(self):
+        try:
+            sel = self.chat.get("sel.first", "sel.last")
+            self.root.clipboard_clear()
+            self.root.clipboard_append(sel)
+        except tk.TclError:
+            pass
+
+    def _select_all_chat(self):
+        self.chat.tag_add("sel", "1.0", "end")
 
     # =================================================================
     #  CALLBACK BAĞLAMA

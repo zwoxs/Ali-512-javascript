@@ -206,8 +206,53 @@ python main.py
 ## GELİŞTİRİLEBİLECEKLER (Öneri)
 - ElevenLabs API ile gerçek JARVIS sesi
 - Home Assistant Companion App + notify servisi (saate bildirim)
-- Hava durumu widget (OWM_API_KEY ile çalışıyor)
 - Google Calendar entegrasyonu
 - Flask + PWA ile mobil erişim (Tailscale VPN üzerinden)
-- Selenium kurulumu düzeltilirse tam otomatik WhatsApp mesaj gönderimi
+
+---
+
+## v2 GERÇEKLEME DURUMU (kod artık `jarvis2/` altında)
+
+Dökümantasyondaki yapı çalışan Python koduna dönüştürüldü. Tüm modüller
+eksik paket/anahtar durumunda çökmeden çalışır (graceful degradation).
+
+### Çalıştırma
+```bash
+cd jarvis2
+pip install -r requirements.txt      # opsiyonel paketler için
+cp .env.example .env                  # anahtarlarınızı girin
+python main.py                        # Stark HUD (varsayılan)
+python main.py --console              # terminal modu
+python main.py --voice                # terminal + sesli dinleme
+```
+
+### Testler
+```bash
+cd jarvis2
+python -m unittest discover tests     # 19 birim testi
+```
+
+### Uygulanan modüller
+| Modül | Durum | Not |
+|-------|-------|-----|
+| `ui.py` (Stark HUD) | ✅ | Arc reaktör, 10 sekme, 7 tema, animasyonlar, AYARLAR |
+| `core/intent_parser.py` | ✅ | Kural tabanlı TR parser |
+| `core/orchestrator.py` | ✅ | Action yönlendirme, bağlam, istatistik |
+| `modules/ai_brain.py` | ✅ | Groq + function calling + model fallback |
+| `modules/smart_home.py` | ✅ | Home Assistant REST, zamanlayıcı, çoklu cihaz |
+| `modules/whatsapp.py` | ✅ | wa.me + pywhatkit ile OTOMATİK gönderim |
+| `modules/weather.py` | ✅ | OpenWeatherMap widget'ı (önbellekli) |
+| `modules/google_search.py` | ✅ | DuckDuckGo API ile gerçek sonuç (anahtarsız) |
+| `modules/system_control.py` | ✅ | Ses, kilit, uyku, ekran görüntüsü, medya tuşları |
+| `modules/proactive.py` | ✅ | Düşük pil + zamanı gelen hatırlatıcı bildirimi |
+| `modules/daily_planner.py` | ✅ | AI'lı/yerel dinamik plan |
+| `memory/manager.py` | ✅ | Kişi/geçmiş/hatırlatıcı/not/todo (JSON) |
+| `voice/output.py` | ✅ | edge-tts + pyttsx3 fallback |
+| `voice/input.py` | ✅ | SpeechRecognition + uyanma kelimesi |
+
+### Yeni komut örnekleri (v2)
+- `ekranı kilitle` · `ekran görüntüsü al` · `uyku moduna al`
+- `ses seviyesi 50` · `sesi kıs` · `bilgisayarın sesini kapat`
+- `sonraki şarkı` · `müziği duraklat`
+- `hava durumu` · `[konu] ara` (artık gerçek metin cevabı döner)
 </content>

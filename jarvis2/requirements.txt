@@ -16,3 +16,7 @@ SpeechRecognition>=3.10.0
 
 # --- Sistem izleme (UI/istatistik için opsiyonel) ---
 psutil>=5.9.0
+
+# --- Opsiyonel gelişmiş özellikler ---
+pywhatkit>=5.4       # WhatsApp otomatik gönderim
+pyautogui>=0.9.54    # ekran görüntüsü (Windows)

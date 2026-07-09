@@ -108,7 +108,32 @@ class IntentParser:
         if m:
             return {"action": "close_app", "params": {"app": m.group(1)}}
 
-        # ----- sistem -----
+        # ----- sistem: ses seviyesi -----
+        m = re.search(r"ses(?:i)?\s*(?:seviyesi(?:ni)?)?\s*(?:yüzde\s*)?(\d{1,3})", t)
+        if m and re.search(r"\bses\b", t):
+            return {"action": "set_volume", "params": {"percent": int(m.group(1))}}
+        if re.search(r"\b(sesi aç|sesi yükselt|ses aç)\b", t):
+            return {"action": "set_volume", "params": {"percent": 80}}
+        if re.search(r"\b(sesi kıs|sesi azalt|ses kıs)\b", t):
+            return {"action": "set_volume", "params": {"percent": 30}}
+        if re.search(r"\b(bilgisayarın sesini kapat|sistemi sessize al|sesi kapat)\b", t):
+            return {"action": "mute_system", "params": {}}
+
+        # ----- sistem: kilit / uyku / ekran görüntüsü / medya -----
+        if re.search(r"\b(ekranı kilitle|bilgisayarı kilitle|kilitle)\b", t):
+            return {"action": "lock", "params": {}}
+        if re.search(r"\b(uyku moduna al|uyut|uyku)\b", t):
+            return {"action": "sleep", "params": {}}
+        if re.search(r"\b(ekran görüntüsü|ekran resmi|screenshot)\b", t):
+            return {"action": "screenshot", "params": {}}
+        if re.search(r"\b(sonraki şarkı|sonraki parça|next)\b", t):
+            return {"action": "media", "params": {"cmd": "next"}}
+        if re.search(r"\b(önceki şarkı|önceki parça|geri sar)\b", t):
+            return {"action": "media", "params": {"cmd": "prev"}}
+        if re.search(r"\b(müziği duraklat|müziği başlat|oynat|duraklat|play|pause)\b", t):
+            return {"action": "media", "params": {"cmd": "play_pause"}}
+
+        # ----- sistem: kapat / yeniden başlat -----
         if re.search(r"\b(sistemi kapat|bilgisayarı kapat)\b", t):
             return {"action": "shutdown", "params": {}}
         if re.search(r"\b(yeniden başlat|restart et)\b", t):
