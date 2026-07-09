@@ -307,6 +307,9 @@ Ek özellikler:
   tarayıcısından "Ana ekrana ekle" ile gerçek uygulama gibi (ikonlu, tam ekran)
   açılır. Service worker sayesinde hızlı başlar.
 - **"JARVIS düşünüyor…" göstergesi**, cevap gelince hafif titreşim, otomatik kaydırma.
+- **🎨 Tema seçici:** HUD ile aynı 7 renk paleti (CYAN/GREEN/RED/GOLD/PURPLE/
+  MATRIX/ORANGE). Seçim `localStorage`'a kaydedilir; reaktör, saat, balonlar,
+  butonlar ve parıltılar tümüyle temaya uyum sağlar.
 
 **Otomatik takip (`auto_follow_phone`):** Proaktif izleyici, Bluetooth'ta bir
 telefon bağlandığını görünce arayüzü kendiliğinden telefon moduna alır ve

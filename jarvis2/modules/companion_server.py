@@ -233,10 +233,26 @@ _PAGE_HTML = r"""<!doctype html>
   .badge b{ width:8px; height:8px; border-radius:50%; background:#00e676;
     box-shadow:0 0 8px #00e676; }
 
+  /* --- tema seçici --- */
+  .themebtn{ position:fixed; top:12px; left:12px; z-index:6; width:36px; height:36px;
+    border-radius:50%; background:var(--panel); border:1px solid var(--line); color:var(--acc);
+    font-size:17px; cursor:pointer; backdrop-filter:blur(8px); }
+  .palette{ position:fixed; top:56px; left:12px; z-index:6; display:none; gap:9px;
+    padding:12px; width:128px; flex-wrap:wrap; background:var(--panel);
+    border:1px solid var(--line); border-radius:16px; backdrop-filter:blur(12px); }
+  .palette.open{ display:flex; }
+  .swatch{ width:26px; height:26px; border-radius:50%; cursor:pointer;
+    border:2px solid rgba(255,255,255,.18); transition:transform .12s; }
+  .swatch:active{ transform:scale(.88); }
+  .swatch.sel{ border-color:#fff; box-shadow:0 0 10px currentColor; }
+
   header{ padding:20px 16px 10px; text-align:center; }
   /* --- Arc reaktör --- */
   .reactor{ width:118px; height:118px; margin:2px auto 10px; position:relative; }
   .reactor svg{ position:absolute; inset:0; width:100%; height:100%; }
+  .reactor .r-spin circle{ stroke:var(--acc); }
+  .reactor .r-spin.rev circle{ stroke:var(--glow); }
+  .reactor svg>circle{ stroke:var(--acc); opacity:.22; }
   .r-spin{ transform-origin:60px 60px; animation:spin 8s linear infinite; }
   .r-spin.rev{ animation:spin 12s linear infinite reverse; }
   @keyframes spin{ to{ transform:rotate(360deg); } }
@@ -246,13 +262,13 @@ _PAGE_HTML = r"""<!doctype html>
   @keyframes corePulse{ 0%,100%{transform:scale(1);opacity:.92} 50%{transform:scale(1.1);opacity:1} }
 
   header h1{ font-size:26px; font-weight:700; letter-spacing:6px; color:#eafcff;
-    text-shadow:0 0 18px rgba(0,229,255,.6); }
+    text-shadow:0 0 18px var(--acc); }
   .sub{ margin-top:6px; display:inline-flex; align-items:center; gap:8px; font-size:12px;
     color:var(--dim); }
   .chip{ background:var(--panel); border:1px solid var(--line); border-radius:20px;
     padding:3px 10px; color:var(--acc); font-size:11px; }
   .clock{ font-size:46px; font-weight:700; letter-spacing:2px; margin:10px 0 2px;
-    font-variant-numeric:tabular-nums; color:#eafcff; text-shadow:0 0 20px rgba(0,229,255,.55); }
+    font-variant-numeric:tabular-nums; color:#eafcff; text-shadow:0 0 20px var(--acc); }
   .date{ color:var(--dim); font-size:12px; letter-spacing:1px; }
 
   /* --- ses dalgası (dinlerken) --- */
@@ -274,8 +290,10 @@ _PAGE_HTML = r"""<!doctype html>
     animation:pop .28s cubic-bezier(.2,.8,.2,1); }
   @keyframes pop{ from{ opacity:0; transform:translateY(8px) scale(.98) } to{ opacity:1; transform:none } }
   .me{ align-self:flex-end; color:#eafcff;
-    background:linear-gradient(135deg,rgba(0,145,234,.32),rgba(0,229,255,.18));
-    border:1px solid rgba(0,229,255,.35); border-bottom-right-radius:5px; }
+    background:linear-gradient(135deg, color-mix(in srgb,var(--acc2) 34%,transparent),
+                                       color-mix(in srgb,var(--acc) 18%,transparent));
+    border:1px solid color-mix(in srgb,var(--acc) 38%,transparent);
+    border-bottom-right-radius:5px; }
   .jv{ align-self:flex-start; color:#d6f4ff; background:var(--panel);
     border:1px solid var(--line); border-left:3px solid var(--acc); border-bottom-left-radius:5px; }
   .typing{ color:var(--dim); font-style:italic; }
@@ -320,6 +338,8 @@ _PAGE_HTML = r"""<!doctype html>
 <body data-mode="desktop">
   <div class="bgfx"><div class="grid"></div><div class="scan"></div></div>
   <div class="badge"><b></b><span id="btxt">bağlanıyor…</span></div>
+  <button class="themebtn" onclick="togglePalette()" title="Tema">🎨</button>
+  <div class="palette" id="palette"></div>
 
   <header>
     <div class="reactor">
@@ -461,6 +481,36 @@ _PAGE_HTML = r"""<!doctype html>
     }
   }
   setInterval(poll, 2000); poll();
+
+  // ---- Tema seçici (HUD ile aynı 7 palet) ----
+  const THEMES = {
+    CYAN:['#00e5ff','#0091ea','#18ffff'], GREEN:['#00e676','#00c853','#69f0ae'],
+    RED:['#ff5252','#d50000','#ff8a80'], GOLD:['#ffd54f','#ffab00','#ffe57f'],
+    PURPLE:['#b388ff','#7c4dff','#e1bee7'], MATRIX:['#39ff14','#00ff41','#76ff03'],
+    ORANGE:['#ff9100','#ff6d00','#ffab40'],
+  };
+  function applyTheme(name){
+    const t = THEMES[name]; if(!t) return;
+    const r = document.documentElement.style;
+    r.setProperty('--acc', t[0]); r.setProperty('--acc2', t[1]); r.setProperty('--glow', t[2]);
+    r.setProperty('--line', t[0].replace(')', '') + '28');  // hafif çizgi (yaklaşık)
+    document.querySelector('meta[name=theme-color]').setAttribute('content', t[0]);
+    try{ localStorage.setItem('jarvisTheme', name); }catch(e){}
+    document.querySelectorAll('.swatch').forEach(s=>s.classList.toggle('sel', s.dataset.n===name));
+  }
+  function buildPalette(){
+    const p = document.getElementById('palette');
+    Object.keys(THEMES).forEach(name=>{
+      const s = document.createElement('div');
+      s.className='swatch'; s.dataset.n=name; s.style.background=THEMES[name][0];
+      s.style.color=THEMES[name][0]; s.title=name;
+      s.onclick=()=>{ applyTheme(name); togglePalette(); };
+      p.appendChild(s);
+    });
+  }
+  function togglePalette(){ document.getElementById('palette').classList.toggle('open'); }
+  buildPalette();
+  applyTheme(localStorage.getItem('jarvisTheme') || 'CYAN');
 
   if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js').catch(()=>{}); }
 </script>
