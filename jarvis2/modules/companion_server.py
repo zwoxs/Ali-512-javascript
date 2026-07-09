@@ -114,6 +114,10 @@ def _make_handler(server: "CompanionServer"):
                 self._send(200, json.dumps(server.status()), "application/json")
             elif path == "/manifest.json":
                 self._send(200, _MANIFEST, "application/json")
+            elif path == "/icon.svg":
+                self._send(200, _ICON_SVG, "image/svg+xml")
+            elif path == "/sw.js":
+                self._send(200, _SW_JS, "application/javascript")
             else:
                 self._send(404, "Not found")
 
@@ -144,9 +148,38 @@ _MANIFEST = json.dumps({
     "short_name": "JARVIS",
     "start_url": "/",
     "display": "standalone",
+    "orientation": "portrait",
     "background_color": "#05070a",
     "theme_color": "#00e5ff",
+    "icons": [
+        {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml",
+         "purpose": "any maskable"},
+    ],
 })
+
+# Arc reaktör temalı uygulama ikonu (SVG)
+_ICON_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">'
+    '<rect width="512" height="512" rx="96" fill="#05070a"/>'
+    '<circle cx="256" cy="256" r="150" fill="none" stroke="#00e5ff" stroke-width="18"/>'
+    '<circle cx="256" cy="256" r="110" fill="none" stroke="#18ffff" stroke-width="8" opacity="0.6"/>'
+    '<circle cx="256" cy="256" r="66" fill="#00e5ff"/>'
+    '<circle cx="256" cy="256" r="30" fill="#ffffff"/>'
+    '</svg>'
+)
+
+# Basit service worker — kabuğu önbelleğe alır (kurulabilirlik + hızlı açılış)
+_SW_JS = (
+    "const C='jarvis-v1';\n"
+    "self.addEventListener('install',e=>{self.skipWaiting();"
+    "e.waitUntil(caches.open(C).then(c=>c.addAll(['/','/manifest.json','/icon.svg'])));});\n"
+    "self.addEventListener('activate',e=>self.clients.claim());\n"
+    "self.addEventListener('fetch',e=>{\n"
+    "  const u=new URL(e.request.url);\n"
+    "  if(u.pathname.startsWith('/api/')) return;  // API'yi önbelleğe alma\n"
+    "  e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)));\n"
+    "});\n"
+)
 
 
 # =====================================================================
@@ -158,7 +191,13 @@ _PAGE_HTML = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#00e5ff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="JARVIS">
 <link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.svg">
 <title>JARVIS Companion</title>
 <style>
   :root{ --acc:#00e5ff; --bg:#05070a; --bg2:#0b0f14; --bg3:#11161d; --fg:#c8d6e5; --dim:#5a6b7b; }
@@ -191,6 +230,10 @@ _PAGE_HTML = r"""<!doctype html>
         min-width:48px; padding:0; font-size:20px; }
   .bar .icon.on{ background:#ff5252; color:#fff; border-color:#ff5252;
         animation:pulse 1s infinite; }
+  .bar .icon.cont{ background:var(--acc); color:var(--bg); border-color:var(--acc); }
+  .typing{ color:var(--dim); font-style:italic; }
+  .typing::after{ content:'▋'; animation:blink 1s steps(2) infinite; }
+  @keyframes blink{ 0%,50%{opacity:1} 51%,100%{opacity:0} }
   .reactor{ width:90px; height:90px; margin:6px auto; border-radius:50%;
         background:radial-gradient(circle,#fff 0%,var(--acc) 35%,transparent 70%);
         box-shadow:0 0 24px var(--acc); animation:pulse 2s infinite; }
@@ -227,7 +270,8 @@ _PAGE_HTML = r"""<!doctype html>
   </div>
 
   <div class="bar">
-    <button id="mic" class="icon" onclick="toggleMic()" title="Sesli komut">🎤</button>
+    <button id="mic" class="icon" onclick="toggleMic()" title="Sesli komut (tek seferlik)">🎤</button>
+    <button id="cont" class="icon" onclick="toggleCont()" title="Eller serbest — sürekli dinle">♾️</button>
     <input id="inp" placeholder="Konuşun veya yazın, Efendim…" autocomplete="off"
            onkeydown="if(event.key==='Enter')go()">
     <button id="snd" class="icon" onclick="toggleSound()" title="Sesli cevap">🔊</button>
@@ -245,7 +289,14 @@ _PAGE_HTML = r"""<!doctype html>
     const d = document.createElement('div');
     d.className = 'msg ' + cls; d.textContent = text;
     chat.appendChild(d); chat.scrollTop = chat.scrollHeight;
+    return d;
   }
+  function showTyping(){
+    if(document.getElementById('typing')) return;
+    const d = add('JARVIS düşünüyor', 'jv typing'); d.id = 'typing';
+  }
+  function hideTyping(){ const t=document.getElementById('typing'); if(t) t.remove(); }
+  function buzz(ms){ try{ navigator.vibrate && navigator.vibrate(ms); }catch(e){} }
 
   // ---- Telefon hoparlöründen sesli cevap (Web Speech Synthesis) ----
   let speakOn = true;
@@ -257,6 +308,9 @@ _PAGE_HTML = r"""<!doctype html>
       u.lang='tr-TR'; u.rate=1.0; u.pitch=1.0;
       const v=(synth.getVoices()||[]).find(x=>x.lang && x.lang.toLowerCase().startsWith('tr'));
       if(v) u.voice=v;
+      // JARVIS konuşurken mikrofonu duraklat (kendini duymasın)
+      u.onstart = ()=>{ speaking=true; try{ rec && rec.stop(); }catch(e){} };
+      u.onend = ()=>{ speaking=false; if(contMode) setTimeout(startRec, 300); };
       synth.cancel(); synth.speak(u);
     }catch(e){}
   }
@@ -267,34 +321,50 @@ _PAGE_HTML = r"""<!doctype html>
   }
 
   async function send(text){
-    add(text, 'me');
+    add(text, 'me'); showTyping();
     try{
       const r = await fetch('/api/command', {method:'POST',
         headers:{'Content-Type':'application/json'}, body:JSON.stringify({text})});
       const j = await r.json();
-      if (j.response){ add(j.response, 'jv'); speak(j.response); }
-    }catch(e){ add('Bağlantı hatası', 'jv'); }
+      hideTyping();
+      if (j.response){ add(j.response, 'jv'); buzz(30); speak(j.response); }
+    }catch(e){ hideTyping(); add('Bağlantı hatası, Efendim.', 'jv'); }
   }
   function go(){ const i=document.getElementById('inp'); const t=i.value.trim();
     if(t){ send(t); i.value=''; } }
 
   // ---- Telefon mikrofonundan sesli komut (Web Speech Recognition) ----
-  let rec=null, listening=false;
+  let rec=null, listening=false, contMode=false, speaking=false;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
   function setMic(on){
     listening=on;
     const m=document.getElementById('mic');
-    m.textContent = on?'🔴':'🎤'; m.classList.toggle('on', on);
+    m.textContent = on?'🔴':'🎤'; m.classList.toggle('on', on && !contMode);
   }
-  function toggleMic(){
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if(!SR){ add('Bu tarayıcı sesli komutu desteklemiyor, Efendim.', 'jv'); return; }
-    if(listening){ try{rec.stop();}catch(e){} return; }
+  function startRec(){
+    if(!SR || listening || speaking) return;
     rec = new SR(); rec.lang='tr-TR'; rec.interimResults=false; rec.maxAlternatives=1;
     setMic(true);
     rec.onresult = e => { const t = e.results[0][0].transcript; if(t) send(t); };
     rec.onerror = () => setMic(false);
-    rec.onend = () => setMic(false);
+    rec.onend = () => { setMic(false);
+      // sürekli modda, konuşmuyorsak yeniden başlat
+      if(contMode && !speaking) setTimeout(startRec, 400);
+    };
     try{ rec.start(); }catch(e){ setMic(false); }
+  }
+  function toggleMic(){
+    if(!SR){ add('Bu tarayıcı sesli komutu desteklemiyor, Efendim.', 'jv'); return; }
+    if(listening){ try{rec.stop();}catch(e){} return; }
+    startRec();
+  }
+  function toggleCont(){
+    if(!SR){ add('Bu tarayıcı sesli komutu desteklemiyor, Efendim.', 'jv'); return; }
+    contMode=!contMode;
+    document.getElementById('cont').classList.toggle('cont', contMode);
+    if(contMode){ add('Eller serbest mod açık — dinliyorum, Efendim.', 'jv'); startRec(); }
+    else { add('Eller serbest mod kapalı.', 'jv'); try{rec && rec.stop();}catch(e){} }
   }
   // speechSynthesis sesleri geç yüklenebilir
   if(synth) synth.onvoiceschanged = ()=>{};
@@ -313,6 +383,11 @@ _PAGE_HTML = r"""<!doctype html>
     }catch(e){ document.getElementById('badge').style.color = '#ff5252'; }
   }
   setInterval(poll, 2000); poll();
+
+  // PWA: service worker kaydı (ana ekrana eklenebilir uygulama)
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  }
 </script>
 </body>
 </html>"""

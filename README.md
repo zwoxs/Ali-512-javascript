@@ -299,6 +299,15 @@ web arayüzü** yayınlar (`companion_server.py`, ek paket gerekmez).
 bilgisayardan kalktığınızda JARVIS telefonunuzda yanınızda gelir. 🔊 ile
 sesli cevabı aç/kapatabilirsiniz.
 
+Ek özellikler:
+- **♾️ Eller serbest mod:** Sürekli dinler; her seferinde mikrofona basmadan
+  konuşup konuşup devam edersiniz. JARVIS konuşurken mikrofon otomatik
+  duraklar (kendini duymaz), bitince tekrar dinler.
+- **PWA — ana ekrana ekle:** Companion bir Progressive Web App'tir; telefon
+  tarayıcısından "Ana ekrana ekle" ile gerçek uygulama gibi (ikonlu, tam ekran)
+  açılır. Service worker sayesinde hızlı başlar.
+- **"JARVIS düşünüyor…" göstergesi**, cevap gelince hafif titreşim, otomatik kaydırma.
+
 **Otomatik takip (`auto_follow_phone`):** Proaktif izleyici, Bluetooth'ta bir
 telefon bağlandığını görünce arayüzü kendiliğinden telefon moduna alır ve
 "yanınızdayım" bildirimi gönderir; telefon ayrılınca masaüstüne döner.
