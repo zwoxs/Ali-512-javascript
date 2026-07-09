@@ -89,8 +89,7 @@ class JarvisHUD:
             "bluetooth tara", "ses cihazlarını listele", "eşleşmiş cihazlar",
             "buradan konuş", "sesi varsayılana al", "kulaklığa bağlan",
             "hoparlöre bağlan", "takma ad ekle kulaklık",
-            "telefona bağlan", "saate bağlan", "arayüzü telefona geçir",
-            "arayüzü saate geçir", "arayüzü bilgisayara al",
+            "telefona bağlan", "arayüzü telefona geçir", "arayüzü bilgisayara al",
             "/help", "/clear", "/theme CYAN", "/theme GREEN", "/theme MATRIX",
             "/exit", "/stats",
         ]
@@ -629,8 +628,7 @@ class JarvisHUD:
 
         row = tk.Frame(tab, bg=BG)
         row.pack(pady=10)
-        for label, target in [("🖥 Masaüstü", "desktop"), ("📱 Telefon", "phone"),
-                              ("⌚ Saat", "watch")]:
+        for label, target in [("🖥 Masaüstü", "desktop"), ("📱 Telefon", "phone")]:
             tk.Button(row, text=label, bg=BG3, fg=self.accent, bd=0,
                       activebackground=self.accent, activeforeground=BG,
                       font=("Consolas", 10, "bold"), cursor="hand2", width=12,
@@ -647,7 +645,7 @@ class JarvisHUD:
             return
         if getattr(self.companion, "running", False):
             self.mobile_url.config(text=self.companion.local_url())
-        labels = {"desktop": "masaüstü", "phone": "telefon", "watch": "saat"}
+        labels = {"desktop": "masaüstü", "phone": "telefon"}
         dev = f"  ·  {self.companion.active_device}" if self.companion.active_device else ""
         self.mobile_mode.config(
             text=f"Aktif mod: {labels.get(self.companion.active_mode, '—')}{dev}")

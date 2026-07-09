@@ -5,7 +5,7 @@ JARVIS'in masaüstü HUD'u fiziksel olarak bir telefona/saate taşınamaz
 kendini uyarlayan bir web arayüzü yayınlar. Telefon/saat kendi tarayıcısından
 bu adresi açar.
 
-"Bağlanılan cihaza geçiş": sunucu bir 'active_mode' tutar (desktop/phone/watch).
+"Bağlanılan cihaza geçiş": sunucu bir 'active_mode' tutar (desktop/phone).
 JARVIS bir telefona bağlanınca active_mode='phone' olur; arayüzü açık olan ve
 kendi modunu zorlamamış tüm istemciler otomatik olarak telefon düzenine geçer.
 
@@ -36,7 +36,7 @@ class CompanionServer:
         self.settings = settings or {}
         self.host = host
         self.port = port
-        self.active_mode = "desktop"      # desktop / phone / watch
+        self.active_mode = "desktop"      # desktop / phone
         self.active_device = None
         self._httpd = None
         self._thread = None
@@ -71,11 +71,11 @@ class CompanionServer:
     # ---------- mod (aktif cihaz düzeni) ----------
     def set_mode(self, mode: str, device_name: str = None) -> str:
         mode = (mode or "desktop").lower()
-        if mode not in ("desktop", "phone", "watch"):
+        if mode not in ("desktop", "phone"):
             mode = "desktop"
         self.active_mode = mode
         self.active_device = device_name
-        labels = {"desktop": "masaüstü", "phone": "telefon", "watch": "saat"}
+        labels = {"desktop": "masaüstü", "phone": "telefon"}
         return f"Arayüz {labels[mode]} moduna geçirildi, Efendim."
 
     def status(self) -> dict:
@@ -196,24 +196,6 @@ _PAGE_HTML = r"""<!doctype html>
   body[data-mode="phone"]{ max-width:480px; margin:0 auto; }
   body[data-mode="phone"] header h1{ font-size:20px; }
 
-  /* ---------- SAAT MODU (küçük, dairesel his) ---------- */
-  body[data-mode="watch"]{ max-width:240px; width:100%; margin:0 auto;
-        align-items:center; justify-content:center; overflow:hidden; padding:4px; }
-  body[data-mode="watch"] header, body[data-mode="watch"] .quick,
-  body[data-mode="watch"] .bar{ width:100%; }
-  body[data-mode="watch"] .reactor,
-  body[data-mode="watch"] header .sub,
-  body[data-mode="watch"] .date,
-  body[data-mode="watch"] #chat{ display:none; }
-  body[data-mode="watch"] header{ padding:6px; }
-  body[data-mode="watch"] header h1{ font-size:14px; letter-spacing:1px; }
-  body[data-mode="watch"] .clock{ font-size:30px; letter-spacing:0; margin:2px 0; }
-  body[data-mode="watch"] .quick{ justify-content:center; padding:6px; gap:5px; }
-  body[data-mode="watch"] .quick button{ font-size:10px; padding:5px 8px; }
-  body[data-mode="watch"] .bar{ padding:6px; }
-  body[data-mode="watch"] .bar input{ font-size:12px; padding:6px 8px; }
-  body[data-mode="watch"] .bar button{ padding:0 12px; }
-
   /* ---------- MASAÜSTÜ MODU ---------- */
   body[data-mode="desktop"]{ max-width:760px; margin:0 auto; }
   body[data-mode="desktop"] header h1{ font-size:28px; }
@@ -249,7 +231,7 @@ _PAGE_HTML = r"""<!doctype html>
 <script>
   // ?mode= ile bu cihazın düzenini zorla; yoksa sunucunun aktif modunu takip et.
   const params = new URLSearchParams(location.search);
-  const forced = params.get('mode');   // phone / watch / desktop / null
+  const forced = params.get('mode');   // phone / desktop / null
   if (forced) document.body.dataset.mode = forced;
 
   const chat = document.getElementById('chat');
@@ -273,9 +255,7 @@ _PAGE_HTML = r"""<!doctype html>
   async function poll(){
     try{
       const r = await fetch('/api/status'); const s = await r.json();
-      // saat modunda saniyeyi gizle (küçük ekrana sığsın)
-      document.getElementById('clock').textContent =
-        (document.body.dataset.mode === 'watch') ? s.time.slice(0,5) : s.time;
+      document.getElementById('clock').textContent = s.time;
       document.getElementById('date').textContent = s.date;
       document.getElementById('title').textContent = s.assistant_name;
       document.getElementById('badge').style.color = '#00e676';

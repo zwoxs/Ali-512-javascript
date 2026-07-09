@@ -73,12 +73,10 @@ class TestIntentParser(unittest.TestCase):
 
     def test_ui_switch_routes(self):
         self.assertEqual(self.p.parse("arayüzü telefona geçir")["params"]["target"], "phone")
-        self.assertEqual(self.p.parse("arayüzü saate geçir")["params"]["target"], "watch")
         self.assertEqual(self.p.parse("arayüzü bilgisayara al")["params"]["target"], "desktop")
 
     def test_device_classification(self):
         from modules.bluetooth_manager import BluetoothManager as BM
-        self.assertEqual(BM.classify_device("Galaxy Watch 6"), "watch")
         self.assertEqual(BM.classify_device("iPhone 15 Pro"), "phone")
         self.assertEqual(BM.classify_device("AirPods Pro"), "headphone")
         self.assertEqual(BM.classify_device("JBL Flip 6"), "speaker")

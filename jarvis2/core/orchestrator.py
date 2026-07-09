@@ -409,19 +409,18 @@ class Orchestrator:
         spoken = p.get("device", "")
         name, klass = self.bluetooth.resolve_and_classify(spoken)
 
-        # Telefon/saat: arayüzü o cihaza (moduna) geçir
-        if klass in ("phone", "watch"):
-            connect_note = self.bluetooth.connect(name)
-            label = "telefon" if klass == "phone" else "saat"
+        # Telefon: arayüzü telefona geçir
+        if klass == "phone":
+            self.bluetooth.connect(name)
             if self.companion:
-                self.companion.set_mode(klass, name)
+                self.companion.set_mode("phone", name)
                 url = self.companion.local_url() if self.companion.running else None
                 extra = (f" Cihazınızın tarayıcısından {url} adresini açın."
                          if url else " (Companion arayüzü başlatılmadı.)")
-                return (f"{name} cihazına yöneldim; arayüzü {label} moduna geçirdim, "
+                return (f"{name} cihazına yöneldim; arayüzü telefon moduna geçirdim, "
                         f"Efendim.{extra}")
-            return (f"{name} bir {label}; ancak companion web arayüzü çalışmıyor, Efendim. "
-                    f"main.py'ı çalıştırdığınızda otomatik başlar.")
+            return (f"{name} bir telefon; ancak companion web arayüzü çalışmıyor, "
+                    f"Efendim. main.py'ı çalıştırdığınızda otomatik başlar.")
 
         # Hoparlör/kulaklık/bilinmeyen: sesi o cihaza yönlendir
         return self.bluetooth.connect_and_speak(spoken)

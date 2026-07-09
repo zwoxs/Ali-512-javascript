@@ -220,7 +220,7 @@ class BluetoothManager:
         return route_msg
 
     def resolve_and_classify(self, spoken: str):
-        """(kanonik_ad, tür) döndürür. tür: phone/watch/headphone/speaker/unknown."""
+        """(kanonik_ad, tür) döndürür. tür: phone/headphone/speaker/unknown."""
         name = self._resolve_device_name(spoken)
         canon = self._canonical_name(name)
         if canon:
@@ -318,10 +318,8 @@ class BluetoothManager:
 
     @staticmethod
     def classify_device(name: str) -> str:
-        """Cihaz adından türünü tahmin eder: phone / watch / headphone / speaker / unknown."""
+        """Cihaz adından türünü tahmin eder: phone / headphone / speaker / unknown."""
         n = (name or "").lower()
-        watch_kw = ("watch", "saat", "band", "fit", "gt ", "gtr", "gts",
-                    "amazfit", "galaxy watch", "mi band", "wear")
         phone_kw = ("phone", "telefon", "iphone", "galaxy s", "galaxy a",
                     "galaxy note", "redmi", "pixel", "poco", "oneplus",
                     "huawei p", "huawei mate", "reno", "xperia")
@@ -329,9 +327,6 @@ class BluetoothManager:
                    "wh-", "wf-", "freebuds", "headset", "earphone", "earbud")
         speaker_kw = ("speaker", "hoparlör", "hoparlor", "jbl", "flip", "boom",
                       "soundbar", "charge", "go 3", "clip", "bose", "sony srs")
-        for kw in watch_kw:
-            if kw in n:
-                return "watch"
         for kw in phone_kw:
             if kw in n:
                 return "phone"

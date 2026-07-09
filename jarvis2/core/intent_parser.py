@@ -72,9 +72,9 @@ class IntentParser:
         if re.search(r"\b(buradan konuş|buradan seslen)\b", t):
             return {"action": "bt_speak_test", "params": {}}
         # arayüzü cihaza geçir: "arayüzü telefona geçir/al/aktar"
-        m = re.search(r"(?:arayüz|arayüzü|ekran|ui)\w*\s+(telefon|mobil|saat|bilgisayar|masaüstü)\w*", t)
+        m = re.search(r"(?:arayüz|arayüzü|ekran|ui)\w*\s+(telefon|mobil|bilgisayar|masaüstü)\w*", t)
         if m:
-            tmap = {"telefon": "phone", "mobil": "phone", "saat": "watch",
+            tmap = {"telefon": "phone", "mobil": "phone",
                     "bilgisayar": "desktop", "masaüstü": "desktop"}
             return {"action": "ui_switch", "params": {"target": tmap[m.group(1)]}}
 
