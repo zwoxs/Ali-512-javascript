@@ -28,7 +28,7 @@ _AY = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
 
 class Orchestrator:
     def __init__(self, settings, memory, ai_brain=None, smart_home=None,
-                 whatsapp=None, planner=None, voice_output=None):
+                 whatsapp=None, planner=None, voice_output=None, weather=None):
         self.settings = settings
         self.memory = memory
         self.ai_brain = ai_brain
@@ -36,6 +36,7 @@ class Orchestrator:
         self.whatsapp = whatsapp
         self.planner = planner
         self.voice_output = voice_output
+        self.weather = weather
         self.parser = IntentParser(settings)
 
         # kısa süreli bağlam
@@ -292,6 +293,12 @@ class Orchestrator:
         url = "https://www.google.com/search?q=" + urllib.parse.quote(query)
         webbrowser.open(url)
         return f"'{query}' için arama açılıyor, Efendim."
+
+    # ---------- hava durumu ----------
+    def _act_weather(self, p):
+        if not self.weather or not self.weather.available:
+            return "Hava durumu için OWM_API_KEY ayarlı değil, Efendim."
+        return self.weather.summary()
 
     # ---------- AI beyni (fallback) ----------
     def _act_ai_brain(self, p):

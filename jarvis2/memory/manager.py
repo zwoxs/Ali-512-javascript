@@ -16,6 +16,8 @@ class MemoryManager:
         self.contacts_path = os.path.join(base_dir, "contacts.json")
         self.history_path = os.path.join(base_dir, "history.json")
         self.reminders_path = os.path.join(base_dir, "reminders.json")
+        self.notes_path = os.path.join(base_dir, "notes.json")
+        self.todos_path = os.path.join(base_dir, "todos.json")
 
     # ---------- düşük seviye yardımcılar ----------
     @staticmethod
@@ -82,3 +84,61 @@ class MemoryManager:
 
     def clear_reminders(self) -> None:
         self._write(self.reminders_path, [])
+
+    def mark_reminder_done(self, index: int) -> bool:
+        reminders = self._read(self.reminders_path, [])
+        if 0 <= index < len(reminders):
+            reminders[index]["done"] = True
+            self._write(self.reminders_path, reminders)
+            return True
+        return False
+
+    # ---------- notlar ----------
+    def list_notes(self) -> list:
+        return self._read(self.notes_path, [])
+
+    def add_note(self, text: str) -> None:
+        notes = self.list_notes()
+        notes.append({
+            "text": text,
+            "ts": datetime.now().isoformat(timespec="seconds"),
+        })
+        self._write(self.notes_path, notes)
+
+    def delete_note(self, index: int) -> bool:
+        notes = self.list_notes()
+        if 0 <= index < len(notes):
+            notes.pop(index)
+            self._write(self.notes_path, notes)
+            return True
+        return False
+
+    # ---------- yapılacaklar (todo) ----------
+    def list_todos(self) -> list:
+        return self._read(self.todos_path, [])
+
+    def add_todo(self, text: str, priority: str = "normal") -> None:
+        todos = self.list_todos()
+        todos.append({
+            "text": text,
+            "priority": priority,   # yüksek / orta / normal
+            "done": False,
+            "ts": datetime.now().isoformat(timespec="seconds"),
+        })
+        self._write(self.todos_path, todos)
+
+    def toggle_todo(self, index: int) -> bool:
+        todos = self.list_todos()
+        if 0 <= index < len(todos):
+            todos[index]["done"] = not todos[index].get("done", False)
+            self._write(self.todos_path, todos)
+            return True
+        return False
+
+    def delete_todo(self, index: int) -> bool:
+        todos = self.list_todos()
+        if 0 <= index < len(todos):
+            todos.pop(index)
+            self._write(self.todos_path, todos)
+            return True
+        return False

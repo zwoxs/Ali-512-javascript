@@ -1,12 +1,13 @@
 """JARVIS2 — giriş noktası.
 
-Konsol tabanlı etkileşimli döngü + opsiyonel sesli komut modu.
-Tüm modüller eksik paket/anahtar durumunda zarifçe devre dışı kalır,
-sistem yine klavyeyle çalışmaya devam eder.
+Varsayılan olarak Stark HUD arayüzünü açar. tkinter yoksa veya --console
+verilirse konsol moduna düşer. Tüm modüller eksik paket/anahtar durumunda
+zarifçe devre dışı kalır.
 
 Çalıştırma:
-    python main.py            # konsol modu
-    python main.py --voice    # sesli dinleme de açık
+    python main.py             # HUD arayüzü (varsayılan)
+    python main.py --console   # konsol modu
+    python main.py --voice     # (konsolda) sesli dinleme de açık
 """
 import sys
 
@@ -22,6 +23,7 @@ from modules.ai_brain import AIBrain
 from modules.smart_home import SmartHome
 from modules.whatsapp import WhatsApp
 from modules.daily_planner import DailyPlanner
+from modules.weather import Weather
 from voice.output import VoiceOutput
 from voice.input import VoiceInput
 from core.orchestrator import Orchestrator
@@ -37,6 +39,7 @@ def build_system():
     ai_brain = AIBrain(settings, smart_home=smart_home)
     whatsapp = WhatsApp(memory=memory)
     planner = DailyPlanner(ai_brain=ai_brain)
+    weather = Weather()
 
     orchestrator = Orchestrator(
         settings=settings,
@@ -46,11 +49,39 @@ def build_system():
         whatsapp=whatsapp,
         planner=planner,
         voice_output=voice_output,
+        weather=weather,
     )
-    return settings, orchestrator, voice_output, smart_home, ai_brain
+    return {
+        "settings": settings, "orchestrator": orchestrator,
+        "voice_output": voice_output, "voice_input_cls": VoiceInput,
+        "smart_home": smart_home, "ai_brain": ai_brain, "weather": weather,
+    }
 
 
-def print_status(settings, orchestrator, smart_home, ai_brain):
+# =====================================================================
+#  HUD MODU
+# =====================================================================
+def run_ui(sys_dict):
+    from ui import JarvisHUD
+
+    settings = sys_dict["settings"]
+    voice_input = sys_dict["voice_input_cls"](settings)  # HUD içinden açılır
+
+    hud = JarvisHUD(
+        orchestrator=sys_dict["orchestrator"],
+        voice_output=sys_dict["voice_output"],
+        voice_input=voice_input,
+        smart_home=sys_dict["smart_home"],
+        weather=sys_dict["weather"],
+        settings=settings,
+    )
+    hud.run()
+
+
+# =====================================================================
+#  KONSOL MODU
+# =====================================================================
+def print_status(settings, smart_home, ai_brain):
     name = settings.get("assistant_name", "JARVIS")
     print("=" * 48)
     print(f"  {name} v2 — hazır")
@@ -62,20 +93,21 @@ def print_status(settings, orchestrator, smart_home, ai_brain):
     print("=" * 48)
 
 
-def main():
+def run_console(sys_dict):
+    settings = sys_dict["settings"]
+    orchestrator = sys_dict["orchestrator"]
+    voice_output = sys_dict["voice_output"]
+    smart_home = sys_dict["smart_home"]
+    ai_brain = sys_dict["ai_brain"]
     voice_mode = "--voice" in sys.argv
-    settings, orchestrator, voice_output, smart_home, ai_brain = build_system()
 
-    # bildirimleri konsola bas
     orchestrator.set_notify_callback(lambda m: print(f"\n{m}\n> ", end=""))
-
-    print_status(settings, orchestrator, smart_home, ai_brain)
+    print_status(settings, smart_home, ai_brain)
 
     greeting = orchestrator.handle("günaydın")
     print(f"\nJARVIS: {greeting}\n")
     voice_output.speak(greeting, blocking=False)
 
-    # ----- opsiyonel sesli mod -----
     voice_input = None
     if voice_mode:
         def on_voice_command(cmd):
@@ -88,7 +120,7 @@ def main():
             print(f"JARVIS: {resp}\n> ", end="")
             voice_output.speak(resp)
 
-        voice_input = VoiceInput(settings, on_command=on_voice_command)
+        voice_input = sys_dict["voice_input_cls"](settings, on_command=on_voice_command)
         if voice_input.available:
             voice_input.start()
             print("🎤 Sesli mod aktif — uyanma kelimesi:",
@@ -96,7 +128,6 @@ def main():
         else:
             print("⚠️  Ses girişi kullanılamıyor (SpeechRecognition/PyAudio eksik).")
 
-    # ----- konsol döngüsü -----
     try:
         while True:
             try:
@@ -107,7 +138,6 @@ def main():
                 continue
 
             resp = orchestrator.handle(text)
-
             if resp == "__EXIT__":
                 farewell = "Görüşmek üzere, Efendim."
                 print(f"JARVIS: {farewell}")
@@ -125,6 +155,20 @@ def main():
     finally:
         if voice_input:
             voice_input.stop()
+
+
+def main():
+    sys_dict = build_system()
+
+    want_console = "--console" in sys.argv or "--voice" in sys.argv
+    if not want_console:
+        try:
+            import tkinter  # noqa: F401
+            run_ui(sys_dict)
+            return
+        except Exception as e:
+            print(f"⚠️  HUD başlatılamadı ({e}), konsol moduna geçiliyor…")
+    run_console(sys_dict)
 
 
 if __name__ == "__main__":

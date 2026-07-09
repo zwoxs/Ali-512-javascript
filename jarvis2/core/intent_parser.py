@@ -52,6 +52,10 @@ class IntentParser:
         if re.search(r"\b(istatistik|oturum bilgisi|kaç komut)\b", t):
             return {"action": "stats", "params": {}}
 
+        # ----- hava durumu -----
+        if re.search(r"\bhava\s*(durumu|nasıl|nasil|ne durumda)?\b", t):
+            return {"action": "weather", "params": {}}
+
         # ----- hatırlatıcı -----
         m = re.search(r"(\d+)\s*(saniye|dakika|saat)\s*sonra\s+(.*?)\s*(?:hatırlat|hatirlat)", t)
         if m:
