@@ -201,8 +201,8 @@ _PAGE_HTML = r"""<!doctype html>
 <title>JARVIS Companion</title>
 <style>
   :root{
-    --acc:#00e5ff; --acc2:#0091ea; --glow:#18ffff;
-    --bg:#04070c; --panel:rgba(255,255,255,.04); --line:rgba(0,229,255,.16);
+    --acc:#2f9bff; --acc2:#2962ff; --glow:#64b5ff;
+    --bg:#03060f; --panel:rgba(90,150,255,.06); --line:rgba(47,155,255,.20);
     --fg:#dbe7f2; --dim:#6b7d8f;
   }
   *{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
@@ -211,7 +211,7 @@ _PAGE_HTML = r"""<!doctype html>
     font-family:'Segoe UI',Consolas,system-ui,monospace;
     color:var(--fg); min-height:100vh; width:100%;
     display:flex; flex-direction:column; position:relative;
-    background:radial-gradient(120% 80% at 50% -10%, #0a1622 0%, var(--bg) 55%);
+    background:radial-gradient(135% 90% at 50% -10%, #0b2145 0%, #06132b 42%, var(--bg) 78%);
   }
   /* --- canlı arka plan: ızgara + tarama çizgisi + parıltı --- */
   .bgfx{ position:fixed; inset:0; z-index:-1; overflow:hidden; pointer-events:none; }
