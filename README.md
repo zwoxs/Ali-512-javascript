@@ -265,6 +265,19 @@ python -m unittest discover tests     # 19 birim testi
 3. Cihazı seçip **Buradan Konuş**'a basın (veya "hoparlörden konuş" deyin).
 4. JARVIS'in sesi artık o cihaza gider. **Varsayılan** ile geri alırsınız.
 
+### Sesli komutla cihaza bağlanma (takma ad sistemi)
+Genel kelimeleri ("kulaklık", "hoparlör") gerçek cihaz adına eşlemek için
+bir kez **takma ad** tanımlanır, sonra tek sesli komutla bağlanılır:
+
+1. BLUETOOTH sekmesinde cihazı seçip **🏷 Takma Ad** ile ad verin
+   (örn. AirPods Pro → "kulaklık"). Ya da: `takma ad ekle kulaklık AirPods Pro`
+2. Artık **"jarvis kulaklığa bağlan"** deyin → JARVIS otomatik olarak o cihaza
+   bağlanır ve sesini oraya yönlendirip test cümlesini oradan söyler.
+3. Marka adıyla da doğrudan çalışır: **"jbl'e bağlan"**, **"realtek bağlan"**.
+
+Türkçe çekim ekleri ve ünsüz yumuşaması otomatik çözülür
+("kulaklığa" → "kulaklık"). `sesi varsayılana al` ile geri dönersiniz.
+
 JARVIS sesi iki yolla yönlendirilir: (a) sistem varsayılan ses çıkışını değiştirerek
 (pygame/pyttsx3 için), (b) `sounddevice` ile doğrudan hedef cihaz indeksine çalarak.
 BLE taraması `bleak`, ses çalma `sounddevice`+`miniaudio` gerektirir (hepsi opsiyonel).

@@ -34,8 +34,9 @@ _IS_LINUX = platform.system() == "Linux"
 
 
 class BluetoothManager:
-    def __init__(self, voice_output=None):
+    def __init__(self, voice_output=None, memory=None):
         self.voice_output = voice_output
+        self.memory = memory
         self.current_output = None  # yönlendirilen cihazın adı
 
     # ---------- yetenek raporu ----------
@@ -177,6 +178,91 @@ class BluetoothManager:
         return None
 
     # =================================================================
+    #  SESLİ KOMUTLA BAĞLAN + KONUŞ (tek adım)
+    # =================================================================
+    def connect_and_speak(self, spoken_name: str) -> str:
+        """'kulaklığa bağlan' gibi bir komutta: cihazı çöz, bağlan ve sesi oraya al.
+
+        Çözümleme sırası: takma ad → ses cihazı adı (kısmi) → eşleşmiş cihaz adı.
+        """
+        raw = (spoken_name or "").strip()
+        if not raw:
+            return "Hangi cihaza bağlanayım, Efendim?"
+
+        resolved = self._resolve_device_name(raw)
+
+        # önce (varsa) klasik bağlantıyı dene — Windows'ta bilgi mesajı döner
+        connect_msg = ""
+        try:
+            connect_msg = self.connect(resolved)
+        except Exception:
+            pass
+
+        # asıl amaç: sesi o cihaza yönlendir
+        route_msg = self.set_speak_device(resolved)
+
+        # ses cihazlarında bulunamadıysa yardımcı ol
+        if "bulunamadı" in route_msg:
+            outs = self.list_audio_outputs()
+            if outs:
+                names = ", ".join(o["name"] for o in outs[:6])
+                return (f"'{raw}' adlı cihazı ses çıkışlarında bulamadım, Efendim. "
+                        f"Şu cihazları görüyorum: {names}. "
+                        f"Bir takma ad tanımlarsanız (örn. '{raw}' → gerçek ad) "
+                        f"bir daha kolayca bağlanırım.")
+            return route_msg
+
+        # test sesi çal
+        if self.voice_output:
+            self.voice_output.speak(
+                f"Bağlandım, Efendim. Artık {self.current_output} üzerinden konuşuyorum.",
+                blocking=False)
+        return route_msg
+
+    def _resolve_device_name(self, spoken: str) -> str:
+        """Konuşulan adı gerçek cihaz adına çevir (takma ad + ek temizleme)."""
+        key = self._clean_token(spoken)
+
+        # 1) takma ad tablosu
+        if self.memory:
+            aliases = self.memory.get_bt_aliases()
+            # doğrudan
+            if key in aliases:
+                return aliases[key]
+            # kısmi (takma ad da normalize edilerek)
+            for alias, real in aliases.items():
+                ak = self._clean_token(alias)
+                if ak == key or ak in key or key in ak:
+                    return real
+        return spoken.strip()
+
+    @staticmethod
+    def _clean_token(word: str) -> str:
+        """Küçült, kesme işaretini at, yönelme ekini ve ünsüz yumuşamasını geri al.
+
+        Örn: "kulaklığa" -> ek "-a" atılır -> "kulaklığ" -> ğ→k -> "kulaklık".
+        """
+        w = word.strip().lower()
+        if "'" in w or "’" in w:
+            w = w.replace("’", "'").split("'")[0]
+        # yaygın yönelme ekleri: -ya/-ye/-na/-ne/-a/-e (kabaca)
+        for suf in ("ya", "ye", "na", "ne", "a", "e"):
+            if w.endswith(suf) and len(w) > len(suf) + 2:
+                w = w[: -len(suf)]
+                # ünsüz yumuşamasını geri çevir (kök sesi)
+                mutate = {"ğ": "k", "g": "k", "b": "p", "c": "ç", "d": "t"}
+                if w and w[-1] in mutate:
+                    w = w[:-1] + mutate[w[-1]]
+                break
+        return w
+
+    def set_alias(self, alias: str, device_name: str) -> str:
+        if not self.memory:
+            return "Takma ad kaydı için bellek modülü gerekli, Efendim."
+        self.memory.set_bt_alias(alias, device_name)
+        return f"Tamam Efendim: '{alias}' → {device_name} olarak kaydedildi."
+
+    # =================================================================
     #  SES YÖNLENDİRME — "oradan konuş"
     # =================================================================
     def set_speak_device(self, name_or_index) -> str:
@@ -220,11 +306,19 @@ class BluetoothManager:
                     return o
         except (ValueError, TypeError):
             pass
-        # isim ile (kısmi eşleşme)
-        key = str(name_or_index).lower()
+        # isim ile (kısmi eşleşme) — tam ifade
+        key = str(name_or_index).lower().strip()
         for o in outputs:
-            if key in o["name"].lower():
+            if key and key in o["name"].lower():
                 return o
+        # kelime kelime dene ("jbl e" -> "jbl"), ekleri de temizleyerek
+        for word in key.split():
+            tok = self._clean_token(word)
+            if len(tok) < 2:
+                continue
+            for o in outputs:
+                if tok in o["name"].lower():
+                    return o
         return None
 
     def _set_system_default(self, device_name: str) -> bool:

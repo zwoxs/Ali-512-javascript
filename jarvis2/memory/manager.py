@@ -18,6 +18,7 @@ class MemoryManager:
         self.reminders_path = os.path.join(base_dir, "reminders.json")
         self.notes_path = os.path.join(base_dir, "notes.json")
         self.todos_path = os.path.join(base_dir, "todos.json")
+        self.bt_aliases_path = os.path.join(base_dir, "bt_aliases.json")
 
     # ---------- düşük seviye yardımcılar ----------
     @staticmethod
@@ -140,5 +141,24 @@ class MemoryManager:
         if 0 <= index < len(todos):
             todos.pop(index)
             self._write(self.todos_path, todos)
+            return True
+        return False
+
+    # ---------- bluetooth takma adları ----------
+    def get_bt_aliases(self) -> dict:
+        """{"kulaklık": "AirPods Pro", ...} — sesli komutta kolay eşleşme için."""
+        return self._read(self.bt_aliases_path, {})
+
+    def set_bt_alias(self, alias: str, device_name: str) -> None:
+        aliases = self.get_bt_aliases()
+        aliases[alias.strip().lower()] = device_name.strip()
+        self._write(self.bt_aliases_path, aliases)
+
+    def remove_bt_alias(self, alias: str) -> bool:
+        aliases = self.get_bt_aliases()
+        key = alias.strip().lower()
+        if key in aliases:
+            del aliases[key]
+            self._write(self.bt_aliases_path, aliases)
             return True
         return False

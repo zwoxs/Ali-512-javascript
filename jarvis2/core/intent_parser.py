@@ -71,6 +71,19 @@ class IntentParser:
             return {"action": "bt_speak", "params": {"device": m.group(1).strip()}}
         if re.search(r"\b(buradan konuş|buradan seslen)\b", t):
             return {"action": "bt_speak_test", "params": {}}
+        # takma ad: "takma ad ekle kulaklık AirPods Pro"
+        m = re.search(r"takma ad(?:ı)?\s*(?:ekle|ver|tanımla)?\s+(\S+)\s+(.+)", t)
+        if m:
+            return {"action": "bt_alias",
+                    "params": {"alias": m.group(1).strip(), "device": m.group(2).strip()}}
+        # "[cihaz]a bağlan" / "bluetooth bağlan" / "[cihaz]a bağlansın"
+        # Not: çekimli kelimeyi (ek dahil) bütün yakalarız; ek/yumuşama temizliği
+        # BluetoothManager._clean_token tarafından yapılır.
+        m = re.search(r"(.+?)\s+bağlan(?:sın|ır mısın)?\s*$", t)
+        if m and m.group(1).strip():
+            dev = m.group(1).strip()
+            dev = re.sub(r"^(bluetooth|cihaz)\s+", "", dev).strip() or dev
+            return {"action": "bt_connect", "params": {"device": dev}}
 
         # ----- hatırlatıcı -----
         m = re.search(r"(\d+)\s*(saniye|dakika|saat)\s*sonra\s+(.*?)\s*(?:hatırlat|hatirlat)", t)

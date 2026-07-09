@@ -46,7 +46,7 @@ def build_system():
     weather = Weather()
     web_search = WebSearch(max_results=settings.get("search_results_count", 3))
     system_control = SystemControl()
-    bluetooth = BluetoothManager(voice_output=voice_output)
+    bluetooth = BluetoothManager(voice_output=voice_output, memory=memory)
 
     orchestrator = Orchestrator(
         settings=settings,

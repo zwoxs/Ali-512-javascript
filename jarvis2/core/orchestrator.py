@@ -401,6 +401,16 @@ class Orchestrator:
             return "Bluetooth modülü yüklü değil, Efendim."
         return self.bluetooth.reset_to_default()
 
+    def _act_bt_connect(self, p):
+        if not self._bt_guard():
+            return "Bluetooth modülü yüklü değil, Efendim."
+        return self.bluetooth.connect_and_speak(p.get("device", ""))
+
+    def _act_bt_alias(self, p):
+        if not self._bt_guard():
+            return "Bluetooth modülü yüklü değil, Efendim."
+        return self.bluetooth.set_alias(p.get("alias", ""), p.get("device", ""))
+
     # ---------- AI beyni (fallback) ----------
     def _act_ai_brain(self, p):
         query = p.get("query", "")

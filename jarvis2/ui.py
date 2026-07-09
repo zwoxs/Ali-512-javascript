@@ -85,7 +85,8 @@ class JarvisHUD:
             "ekranı kilitle", "ekran görüntüsü al", "uyku moduna al",
             "ses seviyesi 50", "sonraki şarkı", "önceki şarkı", "müziği duraklat",
             "bluetooth tara", "ses cihazlarını listele", "eşleşmiş cihazlar",
-            "buradan konuş", "sesi varsayılana al",
+            "buradan konuş", "sesi varsayılana al", "kulaklığa bağlan",
+            "hoparlöre bağlan", "takma ad ekle kulaklık",
             "/help", "/clear", "/theme CYAN", "/theme GREEN", "/theme MATRIX",
             "/exit", "/stats",
         ]
@@ -489,8 +490,10 @@ class JarvisHUD:
 
         info = tk.Label(
             tab, bg=BG, fg=FG_DIM, justify="left", font=("Consolas", 9),
-            text=("Bir ses cihazı seçip 'BURADAN KONUŞ' deyin; JARVIS'in sesi\n"
-                  "o cihaza yönlendirilir. (Cihaz önce işletim sisteminde eşleştirilmiş olmalı.)"))
+            text=("Ses cihazını seçip 'BURADAN KONUŞ' deyin; JARVIS'in sesi oraya gider.\n"
+                  "SESLİ KOMUT için: cihaza 'TAKMA AD' verin (örn. kulaklık), sonra\n"
+                  "\"jarvis kulaklığa bağlan\" deyin — otomatik bağlanıp oradan konuşur.\n"
+                  "(Cihaz önce işletim sisteminde eşleştirilmiş olmalı.)"))
         info.pack(anchor="w", padx=10, pady=(8, 4))
 
         btnrow = tk.Frame(tab, bg=BG)
@@ -499,6 +502,7 @@ class JarvisHUD:
                           ("🎧 Ses Cihazları", self._bt_audio_list),
                           ("🔗 Eşleşmiş", self._bt_paired),
                           ("🔈 Buradan Konuş", self._bt_speak_here),
+                          ("🏷 Takma Ad", self._bt_set_alias),
                           ("↩ Varsayılan", self._bt_reset)]:
             tk.Button(btnrow, text=label, bg=BG3, fg=self.accent, bd=0,
                       activebackground=self.accent, activeforeground=BG,
@@ -579,6 +583,23 @@ class JarvisHUD:
         resp = self.bluetooth.reset_to_default()
         self.bt_status.config(text="Ses hedefi: varsayılan cihaz")
         self._toast(resp)
+
+    def _bt_set_alias(self):
+        """Seçili ses cihazına sesli komut için takma ad ata."""
+        if not self.bluetooth:
+            return
+        sel = self.bt_list.curselection()
+        if not sel or self._bt_current_kind != "audio":
+            self._toast("Önce 'Ses Cihazları'ndan birini seçin")
+            return
+        from tkinter import simpledialog
+        item = self._bt_items[sel[0]]
+        alias = simpledialog.askstring(
+            "Takma Ad", f"'{item['name']}' cihazı için sesli komut adı:\n"
+            "(örn. kulaklık, hoparlör)", parent=self.root)
+        if alias:
+            resp = self.bluetooth.set_alias(alias, item["name"])
+            self._toast(resp)
 
     # ---- AYARLAR ----
     def _build_settings_tab(self):
