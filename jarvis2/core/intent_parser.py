@@ -56,6 +56,22 @@ class IntentParser:
         if re.search(r"\bhava\s*(durumu|nasıl|nasil|ne durumda)?\b", t):
             return {"action": "weather", "params": {}}
 
+        # ----- bluetooth / ses yönlendirme -----
+        if re.search(r"\bbluetooth\b.*\b(tara|listele|cihaz|ara|bul)\b", t) or t == "bluetooth":
+            return {"action": "bt_scan", "params": {}}
+        if re.search(r"\b(eşleş(miş|tirilmiş)|kayıtlı)\b.*\bcihaz", t):
+            return {"action": "bt_paired", "params": {}}
+        if re.search(r"\bses\s*cihaz", t):
+            return {"action": "bt_audio_list", "params": {}}
+        if re.search(r"\bses\w*\s+(varsayılan|normal)\w*", t):
+            return {"action": "bt_reset", "params": {}}
+        # "[cihaz]dan/üzerinden konuş"
+        m = re.search(r"(.+?)\s*(?:['’]?[dt][ae]n|üzerinden)\s+konuş", t)
+        if m and m.group(1).strip():
+            return {"action": "bt_speak", "params": {"device": m.group(1).strip()}}
+        if re.search(r"\b(buradan konuş|buradan seslen)\b", t):
+            return {"action": "bt_speak_test", "params": {}}
+
         # ----- hatırlatıcı -----
         m = re.search(r"(\d+)\s*(saniye|dakika|saat)\s*sonra\s+(.*?)\s*(?:hatırlat|hatirlat)", t)
         if m:

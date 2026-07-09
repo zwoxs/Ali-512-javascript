@@ -20,3 +20,12 @@ psutil>=5.9.0
 # --- Opsiyonel gelişmiş özellikler ---
 pywhatkit>=5.4       # WhatsApp otomatik gönderim
 pyautogui>=0.9.54    # ekran görüntüsü (Windows)
+
+# --- Bluetooth / ses yönlendirme (opsiyonel) ---
+bleak>=0.21.0        # BLE cihaz taraması
+sounddevice>=0.4.6   # ses çıkış cihazı seçimi/çalma
+miniaudio>=1.59      # mp3 -> PCM çözme (cihaza çalmak için)
+numpy>=1.24.0
+# Windows'ta varsayılan ses cihazını değiştirmek için (biri):
+#   Install-Module -Name AudioDeviceCmdlets   (PowerShell)
+#   veya nircmd.exe'yi PATH'e ekleyin

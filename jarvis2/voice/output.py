@@ -25,6 +25,19 @@ try:
 except ImportError:
     _PYTTSX3_OK = False
 
+# Belirli bir ses cihazına (örn. Bluetooth hoparlör) çalmak için opsiyonel:
+try:
+    import sounddevice as _sd
+    _SD_OK = True
+except Exception:
+    _SD_OK = False
+
+try:
+    import miniaudio as _ma  # mp3 -> PCM çözme (hafif)
+    _MA_OK = True
+except Exception:
+    _MA_OK = False
+
 
 class VoiceOutput:
     def __init__(self, settings: dict):
@@ -32,6 +45,10 @@ class VoiceOutput:
         self.muted = False
         self._lock = threading.Lock()
         self._pyttsx = None
+
+        # hedef ses cihazı (Bluetooth yönlendirme için)
+        self._output_device_index = None
+        self._output_device_name = None
 
         if _PYGAME_OK:
             try:
@@ -41,6 +58,16 @@ class VoiceOutput:
 
     def reload_settings(self, settings: dict) -> None:
         self.settings = settings
+
+    # ---------- ses çıkış cihazı (Bluetooth yönlendirme) ----------
+    def set_output_device(self, index, name=None) -> None:
+        """None verilirse varsayılan cihaza döner."""
+        self._output_device_index = index
+        self._output_device_name = name
+
+    @property
+    def output_device_name(self):
+        return self._output_device_name
 
     def toggle_mute(self) -> bool:
         self.muted = not self.muted
@@ -58,7 +85,7 @@ class VoiceOutput:
 
     def _speak_now(self, text: str) -> None:
         with self._lock:
-            if _EDGE_OK and _PYGAME_OK:
+            if _EDGE_OK:
                 try:
                     self._speak_edge(text)
                     return
@@ -71,7 +98,8 @@ class VoiceOutput:
                 except Exception:
                     pass
             # son çare
-            print(f"[JARVIS 🔊] {text}")
+            dev = self._output_device_name or "varsayılan"
+            print(f"[JARVIS 🔊 → {dev}] {text}")
 
     # ---------- edge-tts ----------
     def _speak_edge(self, text: str) -> None:
@@ -86,17 +114,34 @@ class VoiceOutput:
         tmp.close()
         try:
             asyncio.run(self._edge_save(text, voice, rate, pitch, tmp.name))
-            pygame.mixer.music.load(tmp.name)
-            pygame.mixer.music.set_volume(float(self.settings.get("tts_volume", 1.0)))
-            pygame.mixer.music.play()
-            while pygame.mixer.music.get_busy():
-                pygame.time.Clock().tick(10)
-            pygame.mixer.music.unload()
+            # Belirli bir cihaza yönlendirme varsa sounddevice ile çal
+            if self._output_device_index is not None and _SD_OK and _MA_OK:
+                self._play_on_device(tmp.name)
+            elif _PYGAME_OK:
+                pygame.mixer.music.load(tmp.name)
+                pygame.mixer.music.set_volume(float(self.settings.get("tts_volume", 1.0)))
+                pygame.mixer.music.play()
+                while pygame.mixer.music.get_busy():
+                    pygame.time.Clock().tick(10)
+                pygame.mixer.music.unload()
+            else:
+                raise RuntimeError("Çalma arka ucu yok")
         finally:
             try:
                 os.remove(tmp.name)
             except OSError:
                 pass
+
+    def _play_on_device(self, mp3_path: str) -> None:
+        """mp3'ü çözüp seçili ses cihazına çalar (Bluetooth yönlendirme)."""
+        decoded = _ma.mp3_read_file_f32(mp3_path)
+        import numpy as np
+        data = np.frombuffer(decoded.samples, dtype=np.float32)
+        if decoded.nchannels > 1:
+            data = data.reshape(-1, decoded.nchannels)
+        _sd.play(data, samplerate=decoded.sample_rate,
+                 device=self._output_device_index)
+        _sd.wait()
 
     @staticmethod
     async def _edge_save(text, voice, rate, pitch, path):

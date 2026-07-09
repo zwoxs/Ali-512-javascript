@@ -245,6 +245,7 @@ python -m unittest discover tests     # 19 birim testi
 | `modules/google_search.py` | ✅ | DuckDuckGo API ile gerçek sonuç (anahtarsız) |
 | `modules/system_control.py` | ✅ | Ses, kilit, uyku, ekran görüntüsü, medya tuşları |
 | `modules/proactive.py` | ✅ | Düşük pil + zamanı gelen hatırlatıcı bildirimi |
+| `modules/bluetooth_manager.py` | ✅ | BT cihaz keşfi + JARVIS sesini BT hoparlör/kulaklığa yönlendirme |
 | `modules/daily_planner.py` | ✅ | AI'lı/yerel dinamik plan |
 | `memory/manager.py` | ✅ | Kişi/geçmiş/hatırlatıcı/not/todo (JSON) |
 | `voice/output.py` | ✅ | edge-tts + pyttsx3 fallback |
@@ -255,4 +256,16 @@ python -m unittest discover tests     # 19 birim testi
 - `ses seviyesi 50` · `sesi kıs` · `bilgisayarın sesini kapat`
 - `sonraki şarkı` · `müziği duraklat`
 - `hava durumu` · `[konu] ara` (artık gerçek metin cevabı döner)
+- `bluetooth tara` · `ses cihazlarını listele` · `eşleşmiş cihazlar`
+- `hoparlörden konuş` · `buradan konuş` · `sesi varsayılana al`
+
+### Bluetooth ile "oradan konuşma" — nasıl çalışır?
+1. Cihazı (hoparlör/kulaklık) **bir kez Windows'ta eşleştirin** (işletim sistemi kısıtlaması).
+2. HUD → **BLUETOOTH** sekmesi → **Ses Cihazları** ile bağlı cihazları listeleyin.
+3. Cihazı seçip **Buradan Konuş**'a basın (veya "hoparlörden konuş" deyin).
+4. JARVIS'in sesi artık o cihaza gider. **Varsayılan** ile geri alırsınız.
+
+JARVIS sesi iki yolla yönlendirilir: (a) sistem varsayılan ses çıkışını değiştirerek
+(pygame/pyttsx3 için), (b) `sounddevice` ile doğrudan hedef cihaz indeksine çalarak.
+BLE taraması `bleak`, ses çalma `sounddevice`+`miniaudio` gerektirir (hepsi opsiyonel).
 </content>

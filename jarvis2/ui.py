@@ -53,12 +53,13 @@ _AY = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
 
 class JarvisHUD:
     def __init__(self, orchestrator, voice_output=None, voice_input=None,
-                 smart_home=None, weather=None, settings=None):
+                 smart_home=None, weather=None, settings=None, bluetooth=None):
         self.orch = orchestrator
         self.voice_output = voice_output
         self.voice_input = voice_input
         self.smart_home = smart_home
         self.weather = weather
+        self.bluetooth = bluetooth
         self.settings = settings or {}
 
         self.theme_name = "CYAN"
@@ -83,6 +84,8 @@ class JarvisHUD:
             "whatsapp aç", "whatsapp kişileri listele", "yardım",
             "ekranı kilitle", "ekran görüntüsü al", "uyku moduna al",
             "ses seviyesi 50", "sonraki şarkı", "önceki şarkı", "müziği duraklat",
+            "bluetooth tara", "ses cihazlarını listele", "eşleşmiş cihazlar",
+            "buradan konuş", "sesi varsayılana al",
             "/help", "/clear", "/theme CYAN", "/theme GREEN", "/theme MATRIX",
             "/exit", "/stats",
         ]
@@ -273,6 +276,7 @@ class JarvisHUD:
         self._build_notes_tab()
         self._build_todo_tab()
         self._build_reminder_tab()
+        self._build_bluetooth_tab()
         self._build_stats_tab()
         self._build_calendar_tab()
         self._build_settings_tab()
@@ -477,6 +481,104 @@ class JarvisHUD:
         self.cal_grid = tk.Frame(tab, bg=BG)
         self.cal_grid.pack(fill="both", expand=True, padx=12, pady=8)
         self._draw_calendar()
+
+    # ---- BLUETOOTH ----
+    def _build_bluetooth_tab(self):
+        tab = tk.Frame(self.nb, bg=BG)
+        self.nb.add(tab, text="BLUETOOTH")
+
+        info = tk.Label(
+            tab, bg=BG, fg=FG_DIM, justify="left", font=("Consolas", 9),
+            text=("Bir ses cihazı seçip 'BURADAN KONUŞ' deyin; JARVIS'in sesi\n"
+                  "o cihaza yönlendirilir. (Cihaz önce işletim sisteminde eşleştirilmiş olmalı.)"))
+        info.pack(anchor="w", padx=10, pady=(8, 4))
+
+        btnrow = tk.Frame(tab, bg=BG)
+        btnrow.pack(fill="x", padx=8, pady=4)
+        for label, fn in [("🔍 Tara (BLE)", self._bt_scan),
+                          ("🎧 Ses Cihazları", self._bt_audio_list),
+                          ("🔗 Eşleşmiş", self._bt_paired),
+                          ("🔈 Buradan Konuş", self._bt_speak_here),
+                          ("↩ Varsayılan", self._bt_reset)]:
+            tk.Button(btnrow, text=label, bg=BG3, fg=self.accent, bd=0,
+                      activebackground=self.accent, activeforeground=BG,
+                      font=("Consolas", 9, "bold"), cursor="hand2",
+                      command=fn).pack(side="left", padx=3)
+
+        self.bt_status = tk.Label(tab, text="Ses hedefi: varsayılan cihaz",
+                                  bg=BG, fg=self.accent, font=("Consolas", 10, "bold"))
+        self.bt_status.pack(anchor="w", padx=10, pady=4)
+
+        self.bt_list = tk.Listbox(tab, bg=BG2, fg=FG, bd=0, font=("Consolas", 10),
+                                  selectbackground=self.accent, selectforeground=BG,
+                                  highlightthickness=0)
+        self.bt_list.pack(fill="both", expand=True, padx=8, pady=8)
+        tk.Label(tab, text="Listeden bir ses cihazı seçip 'Buradan Konuş'a basın.",
+                 bg=BG, fg=FG_DIM, font=("Consolas", 8)).pack()
+        self._bt_current_kind = None  # 'audio' / 'ble' / 'paired'
+
+    def _bt_run(self, fn, kind, label):
+        """Bluetooth işlemini arka planda çalıştırıp listeyi doldurur."""
+        self.bt_list.delete(0, "end")
+        self.bt_list.insert("end", f"  {label}…")
+
+        def worker():
+            try:
+                items = fn()
+            except Exception as e:
+                items = [{"name": f"Hata: {e}"}]
+            self.root.after(0, lambda: self._bt_fill(items, kind))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _bt_fill(self, items, kind):
+        self.bt_list.delete(0, "end")
+        self._bt_current_kind = kind
+        self._bt_items = items
+        if not items:
+            self.bt_list.insert("end", "  (cihaz bulunamadı)")
+            return
+        for it in items:
+            if kind == "audio":
+                mark = " ★" if it.get("default") else ""
+                self.bt_list.insert("end", f"  [{it['index']}] {it['name']}{mark}")
+            else:
+                addr = f"  ({it['address']})" if it.get("address") else ""
+                self.bt_list.insert("end", f"  {it['name']}{addr}")
+
+    def _bt_scan(self):
+        if not self.bluetooth:
+            return
+        self._bt_run(self.bluetooth.scan, "ble", "Taranıyor")
+
+    def _bt_audio_list(self):
+        if not self.bluetooth:
+            return
+        self._bt_run(self.bluetooth.list_audio_outputs, "audio", "Ses cihazları alınıyor")
+
+    def _bt_paired(self):
+        if not self.bluetooth:
+            return
+        self._bt_run(self.bluetooth.list_paired, "paired", "Eşleşmiş cihazlar")
+
+    def _bt_speak_here(self):
+        if not self.bluetooth:
+            return
+        sel = self.bt_list.curselection()
+        if not sel or self._bt_current_kind != "audio":
+            self._toast("Önce 'Ses Cihazları'ndan birini seçin")
+            return
+        item = self._bt_items[sel[0]]
+        resp = self.bluetooth.set_speak_device(item["index"])
+        self.bt_status.config(text=f"Ses hedefi: {item['name']}")
+        self._toast(resp)
+        self.bluetooth.speak_here_test()
+
+    def _bt_reset(self):
+        if not self.bluetooth:
+            return
+        resp = self.bluetooth.reset_to_default()
+        self.bt_status.config(text="Ses hedefi: varsayılan cihaz")
+        self._toast(resp)
 
     # ---- AYARLAR ----
     def _build_settings_tab(self):

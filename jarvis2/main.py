@@ -27,6 +27,7 @@ from modules.weather import Weather
 from modules.google_search import WebSearch
 from modules.system_control import SystemControl
 from modules.proactive import Proactive
+from modules.bluetooth_manager import BluetoothManager
 from voice.output import VoiceOutput
 from voice.input import VoiceInput
 from core.orchestrator import Orchestrator
@@ -45,6 +46,7 @@ def build_system():
     weather = Weather()
     web_search = WebSearch(max_results=settings.get("search_results_count", 3))
     system_control = SystemControl()
+    bluetooth = BluetoothManager(voice_output=voice_output)
 
     orchestrator = Orchestrator(
         settings=settings,
@@ -57,6 +59,7 @@ def build_system():
         weather=weather,
         web_search=web_search,
         system_control=system_control,
+        bluetooth=bluetooth,
     )
 
     # proaktif izleyici (pil, hatırlatıcı) — bildirim callback'i sonra bağlanır
@@ -66,7 +69,7 @@ def build_system():
         "settings": settings, "orchestrator": orchestrator,
         "voice_output": voice_output, "voice_input_cls": VoiceInput,
         "smart_home": smart_home, "ai_brain": ai_brain, "weather": weather,
-        "proactive": proactive,
+        "proactive": proactive, "bluetooth": bluetooth,
     }
 
 
@@ -86,6 +89,7 @@ def run_ui(sys_dict):
         smart_home=sys_dict["smart_home"],
         weather=sys_dict["weather"],
         settings=settings,
+        bluetooth=sys_dict["bluetooth"],
     )
 
     # proaktif bildirimleri HUD toast/callback'ine yönlendir

@@ -51,6 +51,15 @@ class TestIntentParser(unittest.TestCase):
         self.assertEqual(self.p.parse("ses seviyesi 40")["params"]["percent"], 40)
         self.assertEqual(self._act("sonraki şarkı"), "media")
 
+    def test_bluetooth_routes(self):
+        self.assertEqual(self._act("bluetooth tara"), "bt_scan")
+        self.assertEqual(self._act("ses cihazlarını listele"), "bt_audio_list")
+        self.assertEqual(self._act("eşleşmiş cihazlar"), "bt_paired")
+        r = self.p.parse("hoparlörden konuş")
+        self.assertEqual(r["action"], "bt_speak")
+        self.assertIn("hoparlör", r["params"]["device"])
+        self.assertEqual(self._act("sesi varsayılana al"), "bt_reset")
+
     def test_weather_and_wakeword(self):
         self.assertEqual(self._act("hava durumu"), "weather")
         # uyanma kelimesi temizleniyor

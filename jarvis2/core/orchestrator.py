@@ -29,7 +29,7 @@ _AY = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
 class Orchestrator:
     def __init__(self, settings, memory, ai_brain=None, smart_home=None,
                  whatsapp=None, planner=None, voice_output=None, weather=None,
-                 web_search=None, system_control=None):
+                 web_search=None, system_control=None, bluetooth=None):
         self.settings = settings
         self.memory = memory
         self.ai_brain = ai_brain
@@ -40,6 +40,7 @@ class Orchestrator:
         self.weather = weather
         self.web_search = web_search
         self.system_control = system_control
+        self.bluetooth = bluetooth
         self.parser = IntentParser(settings)
 
         # kısa süreli bağlam
@@ -347,6 +348,58 @@ class Orchestrator:
         if not self.weather or not self.weather.available:
             return "Hava durumu için OWM_API_KEY ayarlı değil, Efendim."
         return self.weather.summary()
+
+    # ---------- bluetooth / ses yönlendirme ----------
+    def _bt_guard(self):
+        return self.bluetooth is not None
+
+    def _act_bt_scan(self, p):
+        if not self._bt_guard():
+            return "Bluetooth modülü yüklü değil, Efendim."
+        caps = self.bluetooth.capabilities()
+        if not caps.get("ble_scan"):
+            return ("Bluetooth taraması için `bleak` paketi gerekli, Efendim. "
+                    "Yine de eşleşmiş cihazları ve ses cihazlarını listeleyebilirim.")
+        devices = self.bluetooth.scan()
+        if not devices:
+            return "Yakında Bluetooth cihazı bulamadım, Efendim."
+        lines = [f"• {d['name']} ({d['address']})" for d in devices[:15]]
+        return "Bulunan Bluetooth cihazları:\n" + "\n".join(lines)
+
+    def _act_bt_paired(self, p):
+        if not self._bt_guard():
+            return "Bluetooth modülü yüklü değil, Efendim."
+        devices = self.bluetooth.list_paired()
+        if not devices:
+            return "Eşleşmiş cihaz bulamadım, Efendim."
+        lines = [f"• {d['name']}" for d in devices]
+        return "Eşleşmiş cihazlar:\n" + "\n".join(lines)
+
+    def _act_bt_audio_list(self, p):
+        if not self._bt_guard():
+            return "Bluetooth modülü yüklü değil, Efendim."
+        outs = self.bluetooth.list_audio_outputs()
+        if not outs:
+            return ("Ses cihazlarını listelemek için `sounddevice` paketi gerekli, Efendim.")
+        lines = [f"• [{o['index']}] {o['name']}" + (" (varsayılan)" if o["default"] else "")
+                 for o in outs]
+        return "Ses çıkış cihazları:\n" + "\n".join(lines)
+
+    def _act_bt_speak(self, p):
+        if not self._bt_guard():
+            return "Bluetooth modülü yüklü değil, Efendim."
+        device = p.get("device", "")
+        return self.bluetooth.set_speak_device(device)
+
+    def _act_bt_speak_test(self, p):
+        if not self._bt_guard():
+            return "Bluetooth modülü yüklü değil, Efendim."
+        return self.bluetooth.speak_here_test()
+
+    def _act_bt_reset(self, p):
+        if not self._bt_guard():
+            return "Bluetooth modülü yüklü değil, Efendim."
+        return self.bluetooth.reset_to_default()
 
     # ---------- AI beyni (fallback) ----------
     def _act_ai_brain(self, p):
