@@ -1,0 +1,15 @@
+{
+  "assistant_name": "JARVIS",
+  "wake_word": "jarvis",
+  "language": "tr-TR",
+  "tts_voice": "tr-TR-EmelNeural",
+  "tts_voice_en": "en-US-SoniaNeural",
+  "tts_rate": 170,
+  "tts_pitch": "+0Hz",
+  "tts_volume": 1.0,
+  "owner_name": "Efendim",
+  "search_results_count": 3,
+  "require_wake_word": true,
+  "ai_model": "llama-3.3-70b-versatile",
+  "ai_fallback_model": "llama-3.1-8b-instant"
+}

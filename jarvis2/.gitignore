@@ -1,0 +1,24 @@
+# Ortam & sırlar
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# JARVIS çalışma zamanı verileri
+memory/*.json
+!memory/.gitkeep
+config/smart_home_devices.json
+*.log
+
+# Ses geçici dosyaları
+*.mp3
+*.wav
+
+# İşletim sistemi
+.DS_Store
+Thumbs.db

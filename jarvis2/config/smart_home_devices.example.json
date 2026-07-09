@@ -1,0 +1,5 @@
+{
+  "priz": "switch.sonoff_s60",
+  "lamba": "light.salon",
+  "klima": "climate.oturma_odasi"
+}

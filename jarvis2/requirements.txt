@@ -1,0 +1,18 @@
+# --- Çekirdek ---
+python-dotenv>=1.0.0
+requests>=2.31.0
+
+# --- AI Brain ---
+groq>=0.11.0
+
+# --- Ses çıkışı (TTS) ---
+edge-tts>=6.1.0
+pygame>=2.5.0
+pyttsx3>=2.90        # offline fallback
+
+# --- Ses girişi (STT) ---
+SpeechRecognition>=3.10.0
+# pyaudio>=0.2.13    # Windows: `pip install pyaudio`, Linux: `sudo apt install portaudio19-dev`
+
+# --- Sistem izleme (UI/istatistik için opsiyonel) ---
+psutil>=5.9.0
