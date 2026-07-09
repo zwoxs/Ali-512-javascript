@@ -29,7 +29,8 @@ _AY = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
 class Orchestrator:
     def __init__(self, settings, memory, ai_brain=None, smart_home=None,
                  whatsapp=None, planner=None, voice_output=None, weather=None,
-                 web_search=None, system_control=None, bluetooth=None):
+                 web_search=None, system_control=None, bluetooth=None,
+                 companion=None):
         self.settings = settings
         self.memory = memory
         self.ai_brain = ai_brain
@@ -41,6 +42,7 @@ class Orchestrator:
         self.web_search = web_search
         self.system_control = system_control
         self.bluetooth = bluetooth
+        self.companion = companion
         self.parser = IntentParser(settings)
 
         # kısa süreli bağlam
@@ -404,7 +406,34 @@ class Orchestrator:
     def _act_bt_connect(self, p):
         if not self._bt_guard():
             return "Bluetooth modülü yüklü değil, Efendim."
-        return self.bluetooth.connect_and_speak(p.get("device", ""))
+        spoken = p.get("device", "")
+        name, klass = self.bluetooth.resolve_and_classify(spoken)
+
+        # Telefon/saat: arayüzü o cihaza (moduna) geçir
+        if klass in ("phone", "watch"):
+            connect_note = self.bluetooth.connect(name)
+            label = "telefon" if klass == "phone" else "saat"
+            if self.companion:
+                self.companion.set_mode(klass, name)
+                url = self.companion.local_url() if self.companion.running else None
+                extra = (f" Cihazınızın tarayıcısından {url} adresini açın."
+                         if url else " (Companion arayüzü başlatılmadı.)")
+                return (f"{name} cihazına yöneldim; arayüzü {label} moduna geçirdim, "
+                        f"Efendim.{extra}")
+            return (f"{name} bir {label}; ancak companion web arayüzü çalışmıyor, Efendim. "
+                    f"main.py'ı çalıştırdığınızda otomatik başlar.")
+
+        # Hoparlör/kulaklık/bilinmeyen: sesi o cihaza yönlendir
+        return self.bluetooth.connect_and_speak(spoken)
+
+    def _act_ui_switch(self, p):
+        target = p.get("target", "desktop")
+        if not self.companion:
+            return "Companion web arayüzü çalışmıyor, Efendim."
+        msg = self.companion.set_mode(target)
+        if self.companion.running:
+            msg += f" Adres: {self.companion.local_url()}"
+        return msg
 
     def _act_bt_alias(self, p):
         if not self._bt_guard():

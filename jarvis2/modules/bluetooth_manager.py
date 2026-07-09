@@ -219,6 +219,64 @@ class BluetoothManager:
                 blocking=False)
         return route_msg
 
+    def resolve_and_classify(self, spoken: str):
+        """(kanonik_ad, tür) döndürür. tür: phone/watch/headphone/speaker/unknown."""
+        name = self._resolve_device_name(spoken)
+        canon = self._canonical_name(name)
+        if canon:
+            return canon, self.classify_device(canon)
+        # genel tür kelimesi mi? ("telefon","saat","hoparlör","kulaklık")
+        spoken_klass = self.classify_device(self._clean_token(name))
+        if spoken_klass != "unknown":
+            match = self._first_device_of_type(spoken_klass)
+            if match:
+                return match, spoken_klass
+            return name, spoken_klass  # tür biliniyor ama eşleşen cihaz yok
+        return name, self.classify_device(name)
+
+    def _first_device_of_type(self, klass: str):
+        """Eşleşmiş/ses cihazları içinden verilen türdeki ilk cihazın adı."""
+        names = []
+        try:
+            names += [d.get("name", "") for d in self.list_paired()]
+        except Exception:
+            pass
+        try:
+            names += [o.get("name", "") for o in self.list_audio_outputs()]
+        except Exception:
+            pass
+        for n in names:
+            if n and self.classify_device(n) == klass:
+                return n
+        return None
+
+    def _canonical_name(self, name: str):
+        """Kısmi adı, eşleşmiş cihaz veya ses çıkışı listesinden tam ada çevirir."""
+        key = self._clean_token(name)
+        pools = []
+        try:
+            pools += [d.get("name", "") for d in self.list_paired()]
+        except Exception:
+            pass
+        try:
+            pools += [o.get("name", "") for o in self.list_audio_outputs()]
+        except Exception:
+            pass
+        # tam ifade
+        low = name.lower().strip()
+        for cand in pools:
+            if low and low in cand.lower():
+                return cand
+        # kelime kelime
+        for word in low.split():
+            tok = self._clean_token(word)
+            if len(tok) < 2:
+                continue
+            for cand in pools:
+                if tok in cand.lower():
+                    return cand
+        return None
+
     def _resolve_device_name(self, spoken: str) -> str:
         """Konuşulan adı gerçek cihaz adına çevir (takma ad + ek temizleme)."""
         key = self._clean_token(spoken)
@@ -245,8 +303,10 @@ class BluetoothManager:
         w = word.strip().lower()
         if "'" in w or "’" in w:
             w = w.replace("’", "'").split("'")[0]
-        # yaygın yönelme ekleri: -ya/-ye/-na/-ne/-a/-e (kabaca)
-        for suf in ("ya", "ye", "na", "ne", "a", "e"):
+        # yaygın yönelme ekleri: -ya/-ye (sesli sonrası), -a/-e (sessiz sonrası)
+        # Not: "-na/-ne" tampon eki köke dahil 'n'yi yanlışça silebildiği için yok
+        #      (örn. "telefona" -> "telefon", "telefo" değil).
+        for suf in ("ya", "ye", "a", "e"):
             if w.endswith(suf) and len(w) > len(suf) + 2:
                 w = w[: -len(suf)]
                 # ünsüz yumuşamasını geri çevir (kök sesi)
@@ -255,6 +315,33 @@ class BluetoothManager:
                     w = w[:-1] + mutate[w[-1]]
                 break
         return w
+
+    @staticmethod
+    def classify_device(name: str) -> str:
+        """Cihaz adından türünü tahmin eder: phone / watch / headphone / speaker / unknown."""
+        n = (name or "").lower()
+        watch_kw = ("watch", "saat", "band", "fit", "gt ", "gtr", "gts",
+                    "amazfit", "galaxy watch", "mi band", "wear")
+        phone_kw = ("phone", "telefon", "iphone", "galaxy s", "galaxy a",
+                    "galaxy note", "redmi", "pixel", "poco", "oneplus",
+                    "huawei p", "huawei mate", "reno", "xperia")
+        head_kw = ("airpods", "buds", "headphone", "kulaklık", "kulaklik",
+                   "wh-", "wf-", "freebuds", "headset", "earphone", "earbud")
+        speaker_kw = ("speaker", "hoparlör", "hoparlor", "jbl", "flip", "boom",
+                      "soundbar", "charge", "go 3", "clip", "bose", "sony srs")
+        for kw in watch_kw:
+            if kw in n:
+                return "watch"
+        for kw in phone_kw:
+            if kw in n:
+                return "phone"
+        for kw in head_kw:
+            if kw in n:
+                return "headphone"
+        for kw in speaker_kw:
+            if kw in n:
+                return "speaker"
+        return "unknown"
 
     def set_alias(self, alias: str, device_name: str) -> str:
         if not self.memory:

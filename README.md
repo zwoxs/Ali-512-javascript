@@ -245,7 +245,8 @@ python -m unittest discover tests     # 19 birim testi
 | `modules/google_search.py` | ✅ | DuckDuckGo API ile gerçek sonuç (anahtarsız) |
 | `modules/system_control.py` | ✅ | Ses, kilit, uyku, ekran görüntüsü, medya tuşları |
 | `modules/proactive.py` | ✅ | Düşük pil + zamanı gelen hatırlatıcı bildirimi |
-| `modules/bluetooth_manager.py` | ✅ | BT cihaz keşfi + JARVIS sesini BT hoparlör/kulaklığa yönlendirme |
+| `modules/bluetooth_manager.py` | ✅ | BT cihaz keşfi + JARVIS sesini BT hoparlör/kulaklığa yönlendirme + cihaz türü sınıflandırma |
+| `modules/companion_server.py` | ✅ | Telefon/saat/masaüstü uyarlanır web arayüzü (stdlib, PWA) |
 | `modules/daily_planner.py` | ✅ | AI'lı/yerel dinamik plan |
 | `memory/manager.py` | ✅ | Kişi/geçmiş/hatırlatıcı/not/todo (JSON) |
 | `voice/output.py` | ✅ | edge-tts + pyttsx3 fallback |
@@ -277,6 +278,25 @@ bir kez **takma ad** tanımlanır, sonra tek sesli komutla bağlanılır:
 
 Türkçe çekim ekleri ve ünsüz yumuşaması otomatik çözülür
 ("kulaklığa" → "kulaklık"). `sesi varsayılana al` ile geri dönersiniz.
+
+### Bağlanılan cihaza göre arayüz geçişi (Companion)
+JARVIS'in masaüstü penceresi fiziksel olarak telefona/saate taşınamaz (ayrı
+işletim sistemleri). Bunun yerine JARVIS, yerel ağda **cihaza göre kendini
+uyarlayan bir web arayüzü** yayınlar (`companion_server.py`, ek paket gerekmez).
+
+- `python main.py` çalışınca konsola bir adres yazılır (örn. `http://192.168.1.20:8770`).
+  Telefon/saat aynı Wi-Fi'da bu adresi tarayıcıdan açar (uzaktan için Tailscale).
+- **"telefona bağlan"** → cihaz telefon olarak sınıflandırılır, arayüz **telefon
+  düzenine** geçer. **"saate bağlan"** → **saat düzeni** (kompakt, saniyesiz saat).
+- Cihaz türü addan otomatik anlaşılır (iPhone/Galaxy→telefon, Watch/Band→saat,
+  JBL/hoparlör→ses, AirPods/buds→kulaklık).
+- HUD → **MOBİL** sekmesinden adresi görür, modu elle de değiştirebilirsiniz;
+  ya da `arayüzü telefona/saate/bilgisayara geçir` deyin.
+
+> ⚠️ Watch Fit 2 (HarmonyOS Lite) kapalı sistem olduğundan tarayıcı açamayabilir;
+> saat düzeni, tarayıcısı olan genel akıllı saatlerde çalışır.
+
+Üç düzen de gerçek tarayıcıda (Chromium/Playwright) doğrulanmıştır.
 
 JARVIS sesi iki yolla yönlendirilir: (a) sistem varsayılan ses çıkışını değiştirerek
 (pygame/pyttsx3 için), (b) `sounddevice` ile doğrudan hedef cihaz indeksine çalarak.

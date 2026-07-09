@@ -28,6 +28,7 @@ from modules.google_search import WebSearch
 from modules.system_control import SystemControl
 from modules.proactive import Proactive
 from modules.bluetooth_manager import BluetoothManager
+from modules.companion_server import CompanionServer
 from voice.output import VoiceOutput
 from voice.input import VoiceInput
 from core.orchestrator import Orchestrator
@@ -62,6 +63,10 @@ def build_system():
         bluetooth=bluetooth,
     )
 
+    # companion web sunucusu (telefon/saat uyarlanır arayüzü)
+    companion = CompanionServer(orchestrator, settings=settings)
+    orchestrator.companion = companion
+
     # proaktif izleyici (pil, hatırlatıcı) — bildirim callback'i sonra bağlanır
     proactive = Proactive(memory=memory, smart_home=smart_home)
 
@@ -69,7 +74,7 @@ def build_system():
         "settings": settings, "orchestrator": orchestrator,
         "voice_output": voice_output, "voice_input_cls": VoiceInput,
         "smart_home": smart_home, "ai_brain": ai_brain, "weather": weather,
-        "proactive": proactive, "bluetooth": bluetooth,
+        "proactive": proactive, "bluetooth": bluetooth, "companion": companion,
     }
 
 
@@ -90,18 +95,23 @@ def run_ui(sys_dict):
         weather=sys_dict["weather"],
         settings=settings,
         bluetooth=sys_dict["bluetooth"],
+        companion=sys_dict["companion"],
     )
 
     # proaktif bildirimleri HUD toast/callback'ine yönlendir
     orch = sys_dict["orchestrator"]
     proactive = sys_dict["proactive"]
+    companion = sys_dict["companion"]
     proactive.notify = lambda m: orch._notify(m)
     proactive.start()
+    if companion.start():
+        print(f"📱 Companion arayüzü: {companion.local_url()}")
 
     try:
         hud.run()
     finally:
         proactive.stop()
+        companion.stop()
 
 
 # =====================================================================
@@ -129,8 +139,11 @@ def run_console(sys_dict):
 
     orchestrator.set_notify_callback(lambda m: print(f"\n{m}\n> ", end=""))
     proactive = sys_dict["proactive"]
+    companion = sys_dict["companion"]
     proactive.notify = lambda m: orchestrator._notify(m)
     proactive.start()
+    if companion.start():
+        print(f"📱 Companion arayüzü: {companion.local_url()}")
     print_status(settings, smart_home, ai_brain)
 
     greeting = orchestrator.handle("günaydın")
@@ -183,6 +196,7 @@ def run_console(sys_dict):
             voice_output.speak(resp, blocking=False)
     finally:
         proactive.stop()
+        companion.stop()
         if voice_input:
             voice_input.stop()
 

@@ -53,13 +53,15 @@ _AY = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
 
 class JarvisHUD:
     def __init__(self, orchestrator, voice_output=None, voice_input=None,
-                 smart_home=None, weather=None, settings=None, bluetooth=None):
+                 smart_home=None, weather=None, settings=None, bluetooth=None,
+                 companion=None):
         self.orch = orchestrator
         self.voice_output = voice_output
         self.voice_input = voice_input
         self.smart_home = smart_home
         self.weather = weather
         self.bluetooth = bluetooth
+        self.companion = companion
         self.settings = settings or {}
 
         self.theme_name = "CYAN"
@@ -87,6 +89,8 @@ class JarvisHUD:
             "bluetooth tara", "ses cihazlarını listele", "eşleşmiş cihazlar",
             "buradan konuş", "sesi varsayılana al", "kulaklığa bağlan",
             "hoparlöre bağlan", "takma ad ekle kulaklık",
+            "telefona bağlan", "saate bağlan", "arayüzü telefona geçir",
+            "arayüzü saate geçir", "arayüzü bilgisayara al",
             "/help", "/clear", "/theme CYAN", "/theme GREEN", "/theme MATRIX",
             "/exit", "/stats",
         ]
@@ -278,6 +282,7 @@ class JarvisHUD:
         self._build_todo_tab()
         self._build_reminder_tab()
         self._build_bluetooth_tab()
+        self._build_mobile_tab()
         self._build_stats_tab()
         self._build_calendar_tab()
         self._build_settings_tab()
@@ -601,6 +606,60 @@ class JarvisHUD:
             resp = self.bluetooth.set_alias(alias, item["name"])
             self._toast(resp)
 
+    # ---- MOBİL (companion) ----
+    def _build_mobile_tab(self):
+        tab = tk.Frame(self.nb, bg=BG)
+        self.nb.add(tab, text="MOBİL")
+
+        tk.Label(tab, text="📱 Companion Web Arayüzü", bg=BG, fg=self.accent,
+                 font=("Consolas", 14, "bold")).pack(pady=(14, 4))
+        tk.Label(tab, bg=BG, fg=FG_DIM, justify="left", font=("Consolas", 9),
+                 text=("Telefon/saatinizin tarayıcısından aşağıdaki adresi açın.\n"
+                       "Bir cihaza bağlanınca arayüz otomatik o cihazın moduna geçer;\n"
+                       "aşağıdaki butonlarla manuel de değiştirebilirsiniz.")).pack(padx=16)
+
+        self.mobile_url = tk.Label(tab, text="(sunucu başlatılmadı)", bg=BG3,
+                                   fg=self.accent, font=("Consolas", 13, "bold"),
+                                   padx=14, pady=10)
+        self.mobile_url.pack(pady=12)
+
+        self.mobile_mode = tk.Label(tab, text="Aktif mod: —", bg=BG, fg=FG,
+                                    font=("Consolas", 11))
+        self.mobile_mode.pack(pady=4)
+
+        row = tk.Frame(tab, bg=BG)
+        row.pack(pady=10)
+        for label, target in [("🖥 Masaüstü", "desktop"), ("📱 Telefon", "phone"),
+                              ("⌚ Saat", "watch")]:
+            tk.Button(row, text=label, bg=BG3, fg=self.accent, bd=0,
+                      activebackground=self.accent, activeforeground=BG,
+                      font=("Consolas", 10, "bold"), cursor="hand2", width=12,
+                      command=lambda t=target: self._mobile_set_mode(t)).pack(
+                side="left", padx=6)
+
+        tk.Label(tab, bg=BG, fg=FG_DIM, font=("Consolas", 8),
+                 text="URL'i telefonda açmak için aynı Wi-Fi ağında olmalısınız "
+                      "(veya Tailscale VPN).").pack(pady=(16, 0))
+        self._refresh_mobile()
+
+    def _refresh_mobile(self):
+        if not self.companion:
+            return
+        if getattr(self.companion, "running", False):
+            self.mobile_url.config(text=self.companion.local_url())
+        labels = {"desktop": "masaüstü", "phone": "telefon", "watch": "saat"}
+        dev = f"  ·  {self.companion.active_device}" if self.companion.active_device else ""
+        self.mobile_mode.config(
+            text=f"Aktif mod: {labels.get(self.companion.active_mode, '—')}{dev}")
+
+    def _mobile_set_mode(self, target):
+        if not self.companion:
+            self._toast("Companion sunucusu yok")
+            return
+        self.companion.set_mode(target)
+        self._refresh_mobile()
+        self._toast(f"Arayüz modu: {target}")
+
     # ---- AYARLAR ----
     def _build_settings_tab(self):
         tab = tk.Frame(self.nb, bg=BG)
@@ -738,6 +797,7 @@ class JarvisHUD:
         self._refresh_history()
         self._refresh_contacts()
         self._refresh_stats()
+        self._refresh_mobile()
 
     def _append_chat(self, who, text, tag):
         self.chat.config(state="normal")

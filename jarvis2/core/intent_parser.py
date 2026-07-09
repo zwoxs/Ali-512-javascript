@@ -71,6 +71,13 @@ class IntentParser:
             return {"action": "bt_speak", "params": {"device": m.group(1).strip()}}
         if re.search(r"\b(buradan konuş|buradan seslen)\b", t):
             return {"action": "bt_speak_test", "params": {}}
+        # arayüzü cihaza geçir: "arayüzü telefona geçir/al/aktar"
+        m = re.search(r"(?:arayüz|arayüzü|ekran|ui)\w*\s+(telefon|mobil|saat|bilgisayar|masaüstü)\w*", t)
+        if m:
+            tmap = {"telefon": "phone", "mobil": "phone", "saat": "watch",
+                    "bilgisayar": "desktop", "masaüstü": "desktop"}
+            return {"action": "ui_switch", "params": {"target": tmap[m.group(1)]}}
+
         # takma ad: "takma ad ekle kulaklık AirPods Pro"
         m = re.search(r"takma ad(?:ı)?\s*(?:ekle|ver|tanımla)?\s+(\S+)\s+(.+)", t)
         if m:
