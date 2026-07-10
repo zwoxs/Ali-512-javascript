@@ -222,9 +222,20 @@ _PAGE_HTML = r"""<!doctype html>
     mask-image:radial-gradient(60% 50% at 50% 30%, #000 0%, transparent 75%); }
   @keyframes drift{ to{ transform:translateY(44px); } }
   .scan{ position:absolute; left:0; right:0; height:180px;
-    background:linear-gradient(180deg,transparent,rgba(0,229,255,.06),transparent);
+    background:linear-gradient(180deg,transparent,rgba(47,155,255,.08),transparent);
     animation:scan 7s linear infinite; }
   @keyframes scan{ 0%{top:-200px} 100%{top:110%} }
+
+  /* --- yükselen enerji parçacıkları --- */
+  .particle{ position:absolute; bottom:-20px; width:3px; height:3px; border-radius:50%;
+    background:var(--acc); box-shadow:0 0 6px 1px var(--acc); opacity:0;
+    animation:rise linear infinite; }
+  @keyframes rise{
+    0%{ transform:translateY(0) translateX(0); opacity:0; }
+    8%{ opacity:.9; }
+    92%{ opacity:.5; }
+    100%{ transform:translateY(-115vh) translateX(var(--drift,20px)); opacity:0; }
+  }
 
   .badge{ position:fixed; top:12px; right:12px; z-index:5; display:flex; align-items:center;
     gap:6px; font-size:11px; color:var(--dim); background:var(--panel);
@@ -258,8 +269,15 @@ _PAGE_HTML = r"""<!doctype html>
   @keyframes spin{ to{ transform:rotate(360deg); } }
   .r-core{ position:absolute; inset:38px; border-radius:50%;
     background:radial-gradient(circle,#fff 0%,var(--glow) 30%,var(--acc) 60%,transparent 72%);
-    box-shadow:0 0 26px var(--acc),0 0 54px rgba(0,229,255,.5); animation:corePulse 2.4s ease-in-out infinite; }
+    box-shadow:0 0 26px var(--acc),0 0 54px rgba(47,155,255,.55); animation:corePulse 2.4s ease-in-out infinite; }
   @keyframes corePulse{ 0%,100%{transform:scale(1);opacity:.92} 50%{transform:scale(1.1);opacity:1} }
+  .r-sweep{ position:absolute; inset:-6px; border-radius:50%;
+    background:conic-gradient(from 0deg, transparent 0deg, transparent 250deg,
+                              var(--glow) 300deg, var(--acc) 330deg, transparent 360deg);
+    animation:spin 3.2s linear infinite; opacity:.55; filter:blur(1px); }
+  .r-ring-glow{ position:absolute; inset:6px; border-radius:50%;
+    box-shadow:0 0 22px 2px var(--acc) inset; opacity:.35; animation:ringGlow 2.4s ease-in-out infinite; }
+  @keyframes ringGlow{ 0%,100%{opacity:.2} 50%{opacity:.5} }
 
   header h1{ font-size:26px; font-weight:700; letter-spacing:6px; color:#eafcff;
     text-shadow:0 0 18px var(--acc); }
@@ -303,9 +321,16 @@ _PAGE_HTML = r"""<!doctype html>
   .quick{ display:flex; flex-wrap:wrap; gap:8px; padding:6px 16px 10px; }
   .quick button{ background:var(--panel); color:var(--fg); border:1px solid var(--line);
     border-radius:20px; padding:9px 15px; font-size:13px; font-family:inherit; cursor:pointer;
-    transition:all .15s; backdrop-filter:blur(8px); }
+    transition:transform .15s,background .15s,box-shadow .15s; backdrop-filter:blur(8px);
+    opacity:0; animation:btnIn .5s cubic-bezier(.2,.8,.2,1) forwards; }
+  .quick button:nth-child(1){ animation-delay:.05s } .quick button:nth-child(2){ animation-delay:.11s }
+  .quick button:nth-child(3){ animation-delay:.17s } .quick button:nth-child(4){ animation-delay:.23s }
+  .quick button:nth-child(5){ animation-delay:.29s } .quick button:nth-child(6){ animation-delay:.35s }
+  @keyframes btnIn{ from{ opacity:0; transform:translateY(10px) scale(.9); }
+                     to{ opacity:1; transform:none; } }
   .quick button:active{ background:var(--acc); color:var(--bg); transform:scale(.95);
-    box-shadow:0 0 14px rgba(0,229,255,.5); }
+    box-shadow:0 0 14px var(--acc); }
+  .quick button:hover{ border-color:var(--acc); box-shadow:0 0 10px rgba(47,155,255,.3); }
 
   .bar{ display:flex; gap:9px; padding:12px 14px calc(12px + env(safe-area-inset-bottom));
     background:linear-gradient(180deg,transparent,rgba(4,7,12,.85) 30%);
@@ -336,13 +361,14 @@ _PAGE_HTML = r"""<!doctype html>
 </style>
 </head>
 <body data-mode="desktop">
-  <div class="bgfx"><div class="grid"></div><div class="scan"></div></div>
+  <div class="bgfx"><div class="grid"></div><div class="scan"></div><div id="particles"></div></div>
   <div class="badge"><b></b><span id="btxt">bağlanıyor…</span></div>
   <button class="themebtn" onclick="togglePalette()" title="Tema">🎨</button>
   <div class="palette" id="palette"></div>
 
   <header>
     <div class="reactor">
+      <div class="r-sweep"></div>
       <svg viewBox="0 0 120 120">
         <g class="r-spin">
           <circle cx="60" cy="60" r="54" fill="none" stroke="#00e5ff" stroke-width="2"
@@ -352,8 +378,9 @@ _PAGE_HTML = r"""<!doctype html>
           <circle cx="60" cy="60" r="44" fill="none" stroke="#18ffff" stroke-width="1.5"
             stroke-dasharray="4 10" opacity="0.6"/>
         </g>
-        <circle cx="60" cy="60" r="34" fill="none" stroke="rgba(0,229,255,.25)" stroke-width="1"/>
+        <circle cx="60" cy="60" r="34" fill="none" stroke="rgba(47,155,255,.25)" stroke-width="1"/>
       </svg>
+      <div class="r-ring-glow"></div>
       <div class="r-core"></div>
     </div>
     <h1 id="title">JARVIS</h1>
@@ -481,6 +508,26 @@ _PAGE_HTML = r"""<!doctype html>
     }
   }
   setInterval(poll, 2000); poll();
+
+  // ---- Yükselen enerji parçacıkları (arka plan) ----
+  function spawnParticles(){
+    const host = document.getElementById('particles');
+    const n = 18;
+    for(let i=0;i<n;i++){
+      const p = document.createElement('div');
+      p.className = 'particle';
+      const x = Math.random()*100;
+      const dur = 9 + Math.random()*10;
+      const delay = Math.random()*dur;
+      const drift = (Math.random()*60-30).toFixed(0)+'px';
+      p.style.left = x+'vw';
+      p.style.setProperty('--drift', drift);
+      p.style.animationDuration = dur+'s';
+      p.style.animationDelay = '-'+delay+'s';
+      host.appendChild(p);
+    }
+  }
+  spawnParticles();
 
   // ---- Tema seçici (HUD ile aynı 7 palet) ----
   const THEMES = {
