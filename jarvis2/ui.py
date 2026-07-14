@@ -151,6 +151,13 @@ class JarvisHUD:
         self._calm_notif = 0          # sakin moddayken gelen bildirim sayısı
         self._calm_sweep = 0.0        # radar açısı (hız durumla değişir)
         self._sys_vals = {}           # calm telemetri için son sistem değerleri
+        self._calm_whisper = None     # son yanıt fısıltısı: (metin, zaman)
+        self._calm_agenda = ""        # ajanda satırı (5 sn'de bir tazelenir)
+        self._calm_agenda_ts = -99.0
+        self._calm_weather = None     # hava köşesi için son veri
+        self._calm_dt = 0.02          # uyarlanabilir kare süresi (sn)
+        self._calm_last_mouse_move = 0.0
+        self._last_activity = time.time()  # otomatik sakin mod için
         self._calm_hints = [
             "REAKTÖR ÇEVRİMİÇİ", "AĞ STABİL", "GÜVENLİK PROTOKOLLERİ AKTİF",
             "SENSÖR AĞI TARANIYOR", "ENERJİ AKIŞI NOMİNAL",
@@ -205,6 +212,10 @@ class JarvisHUD:
         # sakin mod (tam ekran canvas, açılış görünümü)
         self._build_calm_mode()
         self.root.bind("<Escape>", lambda e: self._toggle_calm())
+
+        # her tuş/tık etkileşimi otomatik sakin mod sayacını sıfırlar
+        self.root.bind_all("<Key>", self._mark_activity, add="+")
+        self.root.bind_all("<Button>", self._mark_activity, add="+")
 
         # toast katmanı
         self._toasts = []
@@ -766,6 +777,7 @@ class JarvisHUD:
             ("tts_voice", "TTS ses (edge-tts)"),
             ("tts_rate", "Konuşma hızı (wpm)"),
             ("search_results_count", "Arama sonuç sayısı"),
+            ("calm_idle_minutes", "Sakin moda geçiş (dk, 0=kapalı)"),
         ]
         for i, (key, label) in enumerate(fields):
             row = tk.Frame(tab, bg=BG)
@@ -798,7 +810,7 @@ class JarvisHUD:
         for key, var in self._setting_vars.items():
             val = var.get().strip()
             # sayısal alanları dönüştür
-            if key in ("tts_rate", "search_results_count"):
+            if key in ("tts_rate", "search_results_count", "calm_idle_minutes"):
                 try:
                     val = int(val)
                 except ValueError:
@@ -882,6 +894,13 @@ class JarvisHUD:
 
         self._append_chat("JARVIS", resp, "jarvis")
         self._log(f"« {resp}")
+        # sakin mod fısıltısı: yanıtın ilk satırı, kısaltılmış
+        line = resp.strip().splitlines()[0] if resp.strip() else ""
+        if line:
+            if len(line) > 72:
+                line = line[:72] + "…"
+            self._calm_whisper = (line, time.time())
+        self._last_activity = time.time()
         if self.voice_output:
             self.voice_output.speak(resp, blocking=False)
 
@@ -1131,6 +1150,21 @@ class JarvisHUD:
         h = self.calm_c.winfo_height() or 1
         self._calm_mouse_t = (event.x / w - 0.5, event.y / h - 0.5)
         self._calm_mouse_px = (event.x, event.y)
+        self._calm_last_mouse_move = time.time()
+
+    def _mark_activity(self, event=None):
+        self._last_activity = time.time()
+
+    def _tick_idle(self):
+        """HUD'da uzun süre etkileşim olmazsa kendiliğinden sakin moda geç."""
+        try:
+            mins = float(self.settings.get("calm_idle_minutes", 3))
+        except (TypeError, ValueError):
+            mins = 3.0
+        if (mins > 0 and not self._calm_visible
+                and time.time() - self._last_activity > mins * 60):
+            self._show_calm()
+        self.root.after(5000, self._tick_idle)
 
     def _calm_key(self, event):
         """Sakin modda yazmaya başlayınca terminale düş (akıcı geçiş)."""
@@ -1188,18 +1222,26 @@ class JarvisHUD:
         self._calm_pulses.append({"r": 120.0, "v": 2.4, "a0": 0.5})
 
     def _animate_calm(self):
+        # uyarlanabilir kare hızı: boşta 25fps, hareket varken 50fps,
+        # sakin mod kapalıyken sadece seyrek nabız kontrolü
+        delay = 120
         if self._calm_visible:
             try:
                 self._draw_calm_frame()
             except Exception:
                 pass
-        self.root.after(20, self._animate_calm)   # ~50 fps
+            fast = (self._voice_state != "idle" or self._calm_sparks
+                    or self._calm_glitch or self._calm_intro < 0.95
+                    or time.time() - self._calm_last_mouse_move < 1.5)
+            delay = 20 if fast else 40
+        self._calm_dt = delay / 1000.0
+        self.root.after(delay, self._animate_calm)
 
     def _draw_calm_frame(self):
         import random
         c = self.calm_c
         c.delete("all")
-        self._calm_t += 0.02
+        self._calm_t += self._calm_dt
         t = self._calm_t
         w = c.winfo_width() or 1200
         h = c.winfo_height() or 760
@@ -1300,6 +1342,27 @@ class JarvisHUD:
                       fill=_fade(ACCENT, 0.55 * alpha),
                       font=("Consolas", 9))
 
+        # ipuçlarının altında: son JARVIS yanıtının fısıltısı (~9 sn)
+        if self._calm_whisper:
+            wtxt, wts = self._calm_whisper
+            age = time.time() - wts
+            if age > 9:
+                self._calm_whisper = None
+            else:
+                env = min(1.0, age / 0.5) * min(1.0, max(0.0, (9 - age) / 2))
+                c.create_text(w / 2, 58, text=wtxt,
+                              fill=_fade(WHITE, 0.5 * env), font=("Consolas", 9))
+
+        # sol üst: hava durumu köşesi
+        wd = self._calm_weather
+        if wd:
+            try:
+                wtx = f"{wd['icon']} {wd['temp']}°  {str(wd['desc']).upper()[:20]}"
+                c.create_text(26, 34, anchor="w", text=wtx,
+                              fill=_fade(FG, 0.45), font=("Consolas", 9))
+            except Exception:
+                pass
+
         # sol alt: soluk sistem telemetrisi
         try:
             up_min = int(time.time() - self.orch.stats.get("started", time.time())) // 60
@@ -1328,6 +1391,8 @@ class JarvisHUD:
         import random
         # açılış geçişi: sahne yumuşakça belirir
         self._calm_intro += (1 - self._calm_intro) * 0.06
+        if self._calm_intro > 0.995:
+            self._calm_intro = 1.0
         ia = self._calm_intro
 
         def fade(col, a):
@@ -1532,6 +1597,30 @@ class JarvisHUD:
                       text=f"{_GUN[now.weekday()]}, {now.day} {_AY[now.month-1]}",
                       fill=fade(FG, 0.5), font=("Consolas", 9))
 
+        # --- ajanda satırı: sıradaki hatırlatıcı + açık görevler (boşta) ---
+        if t - self._calm_agenda_ts > 5:
+            self._calm_agenda_ts = t
+            parts = []
+            try:
+                rems = self.orch.memory.list_reminders()
+                if rems:
+                    r0 = rems[0]
+                    at = str(r0.get("at", "")).strip()[-5:]
+                    parts.append(f"⏰ {at}  {str(r0.get('text', ''))[:24]}")
+            except Exception:
+                pass
+            try:
+                open_n = sum(1 for x in self.orch.memory.list_todos()
+                             if not x.get("done"))
+                if open_n:
+                    parts.append(f"◻ {open_n} görev")
+            except Exception:
+                pass
+            self._calm_agenda = "   ·   ".join(parts)
+        if self._calm_agenda and sc < 0.3:
+            c.create_text(w / 2, base_y + 114, text=self._calm_agenda,
+                          fill=fade(FG, 0.42), font=("Consolas", 9))
+
         # --- mikrofon düğmesi + çevresinde dönen mini yaylar ---
         mx, my = w / 2, h - 84
         self._calm_mic_pos = (mx, my)
@@ -1689,6 +1778,7 @@ class JarvisHUD:
     def _start_clocks(self):
         self._tick_clock()
         self._tick_system()
+        self._tick_idle()
 
     def _tick_clock(self):
         now = datetime.now()
@@ -1763,6 +1853,7 @@ class JarvisHUD:
                 if w:
                     self.weather_lbl.config(
                         text=f"{w['icon']} {w['city']} {w['temp']}°C\n{w['desc']}")
+                    self._calm_weather = w
                 self._last_weather = time.time()
 
         self.root.after(2000, self._tick_system)
