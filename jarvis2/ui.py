@@ -144,6 +144,10 @@ class JarvisHUD:
         self._calm_hint_i = 0
         self._calm_hint_f = 0
         self._calm_mic_pos = (0, 0)
+        self._calm_intro = 0.0        # açılış geçişi (0 → 1)
+        self._calm_mouse = [0.0, 0.0]  # yumuşatılmış fare ofseti (-0.5..0.5)
+        self._calm_mouse_t = (0.0, 0.0)
+        self._sys_vals = {}           # calm telemetri için son sistem değerleri
         self._calm_hints = [
             "REAKTÖR ÇEVRİMİÇİ", "AĞ STABİL", "GÜVENLİK PROTOKOLLERİ AKTİF",
             "SENSÖR AĞI TARANIYOR", "ENERJİ AKIŞI NOMİNAL",
@@ -1077,6 +1081,7 @@ class JarvisHUD:
         import random
         self.calm_c = tk.Canvas(self.root, bg=BG, highlightthickness=0)
         self.calm_c.bind("<Button-1>", self._calm_click)
+        self.calm_c.bind("<Motion>", self._calm_motion)
         # yıldız alanı: göreli koordinatlar (0..1), yavaş sürüklenme + titreşim
         self._calm_stars = [{
             "x": random.random(), "y": random.random(),
@@ -1102,6 +1107,24 @@ class JarvisHUD:
         tk.Misc.lift(self.calm_c)   # Canvas.lift öğe kaldırır, widget değil
         self.calm_c.focus_set()
         self._calm_visible = True
+        self._calm_intro = 0.0      # yumuşak açılış geçişi
+        # saate göre selamlama, ipucu döngüsünün başına
+        hr = datetime.now().hour
+        greet = ("GÜNAYDIN" if 5 <= hr < 12 else
+                 "İYİ GÜNLER" if 12 <= hr < 18 else
+                 "İYİ AKŞAMLAR" if 18 <= hr < 23 else "İYİ GECELER")
+        greets = ("GÜNAYDIN", "İYİ GÜNLER", "İYİ AKŞAMLAR", "İYİ GECELER")
+        if self._calm_hints and self._calm_hints[0] in greets:
+            self._calm_hints[0] = greet
+        else:
+            self._calm_hints.insert(0, greet)
+        self._calm_hint_i = 0
+        self._calm_hint_f = 0
+
+    def _calm_motion(self, event):
+        w = self.calm_c.winfo_width() or 1
+        h = self.calm_c.winfo_height() or 1
+        self._calm_mouse_t = (event.x / w - 0.5, event.y / h - 0.5)
 
     def _hide_calm(self):
         self.calm_c.place_forget()
@@ -1156,6 +1179,11 @@ class JarvisHUD:
         w = c.winfo_width() or 1200
         h = c.winfo_height() or 760
 
+        # fare ofsetini yumuşat (paralaks için)
+        tx, ty = self._calm_mouse_t
+        self._calm_mouse[0] += (tx - self._calm_mouse[0]) * 0.05
+        self._calm_mouse[1] += (ty - self._calm_mouse[1]) * 0.05
+
         self._draw_calm_bg(c, w, h, t)
         self._draw_calm_scene(c, w, h, t)
 
@@ -1172,12 +1200,15 @@ class JarvisHUD:
             c.create_oval(cx - r, cy - r * 0.82, cx + r, cy + r * 0.82,
                           fill=col, outline="")
 
-        # yıldız alanı: yavaş sürüklenme + parlaklık titreşimi
+        # yıldız alanı: yavaş sürüklenme + parlaklık titreşimi + fare paralaksı
+        mxo, myo = self._calm_mouse
         for s in self._calm_stars:
             s["x"] = (s["x"] + s["vx"]) % 1.0
             s["y"] = (s["y"] + s["vy"]) % 1.0
             b = 0.18 + 0.42 * abs(math.sin(t * s["sp"] + s["ph"]))
-            x, y = s["x"] * w, s["y"] * h
+            depth = 0.5 if s["sz"] == 1 else 1.0   # büyük yıldız = yakın katman
+            x = s["x"] * w - mxo * 9 * depth
+            y = s["y"] * h - myo * 7 * depth
             r = s["sz"]
             c.create_oval(x - r, y - r, x + r, y + r,
                           fill=_fade(WHITE, b), outline="")
@@ -1244,9 +1275,27 @@ class JarvisHUD:
                       fill=_fade(ACCENT, 0.55 * alpha),
                       font=("Consolas", 9))
 
+        # sol alt: soluk sistem telemetrisi
+        try:
+            up_min = int(time.time() - self.orch.stats.get("started", time.time())) // 60
+        except Exception:
+            up_min = 0
+        cpu = self._sys_vals.get("CPU", 0)
+        ram = self._sys_vals.get("RAM", 0)
+        tele = f"CPU {cpu:.0f}%   ·   RAM {ram:.0f}%   ·   OTURUM {up_min} DK"
+        c.create_text(26, h - 26, anchor="sw", text=tele,
+                      fill=_fade(FG, 0.42), font=("Consolas", 9))
+
     # ---- merkez sahne: rozet + uydu ögeleri ----
     def _draw_calm_scene(self, c, w, h, t):
         import random
+        # açılış geçişi: sahne yumuşakça belirir
+        self._calm_intro += (1 - self._calm_intro) * 0.06
+        ia = self._calm_intro
+
+        def fade(col, a):
+            return _fade(col, a * ia)
+
         # aktiflik hedefi: boşta küçük, dinlerken en büyük
         target = {"idle": 0.0, "listening": 1.0,
                   "processing": 0.7, "speaking": 0.85}.get(self._voice_state, 0.0)
@@ -1263,9 +1312,13 @@ class JarvisHUD:
             if random.random() < 0.004:
                 self._calm_glitch = 3
 
+        # yavaş süzülme (Lissajous, ±6 px) + fare paralaksı (ön katman)
+        gdx += 5 * math.sin(t * 0.13) - self._calm_mouse[0] * 16
+        gdy += 4 * math.sin(t * 0.11 + 1.7) - self._calm_mouse[1] * 12
+
         breathe = 1 + 0.045 * math.sin(t * 1.7)
         Rbase = 190 * (0.55 + 0.45 * sc)
-        R = Rbase * breathe
+        R = Rbase * breathe * (0.92 + 0.08 * ia)
         cx = w / 2 + gdx
         cy = h / 2 - 26 + gdy
 
@@ -1285,12 +1338,12 @@ class JarvisHUD:
             b2x = cx + rj * math.cos(a + 0.055)
             b2y = cy + rj * math.sin(a + 0.055)
             c.create_polygon(tipx, tipy, b1x, b1y, b2x, b2y,
-                             fill=_fade(deco_ac, 0.45), outline="")
+                             fill=fade(deco_ac, 0.45), outline="")
 
         # --- ince sabit çemberler ---
         for r, a in ((R, 0.35), (R * 0.78, 0.3), (R * 0.55, 0.25)):
             c.create_oval(cx - r, cy - r, cx + r, cy + r,
-                          outline=_fade(ACCENT, a), width=1)
+                          outline=fade(ACCENT, a), width=1)
 
         # --- ince tik kadranı (60 çizgi) + dönen vurgu yayı ---
         hl = (t * 24) % 360
@@ -1302,7 +1355,26 @@ class JarvisHUD:
             al = 0.6 if diff < 18 else 0.22
             c.create_line(cx + r1 * math.cos(a), cy + r1 * math.sin(a),
                           cx + r2 * math.cos(a), cy + r2 * math.sin(a),
-                          fill=_fade(ACCENT, al), width=1)
+                          fill=fade(ACCENT, al), width=1)
+
+        # --- rozet içinde yavaşça dönen mikro-yazı halkası ---
+        ring_txt = "JARVIS · STARK INDUSTRIES · ARC REACTOR · MK VII · "
+        n = len(ring_txt)
+        rr = R * 0.715
+        base = -t * 5
+        for i, ch in enumerate(ring_txt):
+            if ch == " ":
+                continue
+            adeg = base + i * (360 / n)
+            a = math.radians(adeg)
+            x = cx + rr * math.cos(a)
+            y = cy + rr * math.sin(a)
+            try:
+                c.create_text(x, y, text=ch, fill=fade(ACCENT, 0.3),
+                              font=("Consolas", 7), angle=-adeg - 90)
+            except tk.TclError:
+                c.create_text(x, y, text=ch, fill=fade(ACCENT, 0.3),
+                              font=("Consolas", 7))
 
         # --- dış dönen yay parçaları + kromatik (RGB) kayma ---
         for k in range(4):
@@ -1310,12 +1382,12 @@ class JarvisHUD:
             box = (cx - R - 8, cy - R - 8, cx + R + 8, cy + R + 8)
             c.create_arc(box[0] + 2, box[1], box[2] + 2, box[3],
                          start=a0, extent=38, style="arc",
-                         outline=_fade("#ff6666", 0.22), width=1)
+                         outline=fade("#ff6666", 0.22), width=1)
             c.create_arc(box[0] - 2, box[1], box[2] - 2, box[3],
                          start=a0, extent=38, style="arc",
-                         outline=_fade("#5ee7ff", 0.22), width=1)
+                         outline=fade("#5ee7ff", 0.22), width=1)
             c.create_arc(*box, start=a0, extent=38, style="arc",
-                         outline=_fade(ACCENT, 0.85), width=2)
+                         outline=fade(ACCENT, 0.85), width=2)
 
         # --- dekoratif uydu noktaları (shimmer renkli) ---
         for k in range(6):
@@ -1323,7 +1395,7 @@ class JarvisHUD:
             x = cx + R * 0.88 * math.cos(a)
             y = cy + R * 0.88 * math.sin(a)
             c.create_oval(x - 2, y - 2, x + 2, y + 2,
-                          fill=_fade(deco_ac, 0.8), outline="")
+                          fill=fade(deco_ac, 0.8), outline="")
 
         # --- içte ters yönde dönen 22 noktalı ikinci kadran ---
         for k in range(22):
@@ -1331,7 +1403,7 @@ class JarvisHUD:
             x = cx + R * 0.66 * math.cos(a)
             y = cy + R * 0.66 * math.sin(a)
             c.create_oval(x - 1.4, y - 1.4, x + 1.4, y + 1.4,
-                          fill=_fade(deco_ac, 0.55), outline="")
+                          fill=fade(deco_ac, 0.55), outline="")
 
         # --- radar tarama huzmesi (kuyruğu sönümlenen) ---
         sweep = -t * 130
@@ -1340,13 +1412,13 @@ class JarvisHUD:
             al = 0.42 * (1 - i / 26) ** 1.4
             c.create_line(cx + R * 0.12 * math.cos(a), cy + R * 0.12 * math.sin(a),
                           cx + R * 0.52 * math.cos(a), cy + R * 0.52 * math.sin(a),
-                          fill=_fade(ACCENT, al), width=1)
+                          fill=fade(ACCENT, al), width=1)
 
         # --- çekirdek parlama ---
         for r, col, al in ((R * 0.20, ACCENT_LOW, 0.35), (R * 0.14, ACCENT, 0.55),
                            (R * 0.09, ACCENT, 1.0), (R * 0.045, WHITE, 1.0)):
             c.create_oval(cx - r, cy - r, cx + r, cy + r,
-                          fill=_fade(col, al), outline="")
+                          fill=fade(col, al), outline="")
 
         # --- dışa yayılan nabız halkaları (boşta da, daha yavaş/soluk) ---
         self._calm_pulse_cd -= 1
@@ -1365,7 +1437,7 @@ class JarvisHUD:
                 al = p["a0"] * (1 - k)
                 r = p["r"]
                 c.create_oval(cx - r, cy - r, cx + r, cy + r,
-                              outline=_fade(ACCENT, al), width=1)
+                              outline=fade(ACCENT, al), width=1)
                 alive.append(p)
         self._calm_pulses = alive
 
@@ -1378,7 +1450,7 @@ class JarvisHUD:
                 x = cx + s["r"] * math.cos(s["a"])
                 y = cy + s["r"] * math.sin(s["a"])
                 c.create_oval(x - 1.8, y - 1.8, x + 1.8, y + 1.8,
-                              fill=_fade(GLOW, s["life"]), outline="")
+                              fill=fade(GLOW, s["life"]), outline="")
                 alive.append(s)
         self._calm_sparks = alive
 
@@ -1394,7 +1466,7 @@ class JarvisHUD:
                 al = (0.7 if j == 0 else 0.32 * (1 - j / 5))
                 r = 2 if j == 0 else 1.2
                 c.create_oval(x - r, y - r, x + r, y + r,
-                              fill=_fade(deco_ac, al), outline="")
+                              fill=fade(deco_ac, al), outline="")
 
         # --- rozet altı: durum etiketi + yumuşak saat ---
         labels = {"idle": "BEKLEMEDE", "listening": "DİNLİYOR",
@@ -1402,13 +1474,13 @@ class JarvisHUD:
         stxt = labels.get(self._voice_state, "BEKLEMEDE")
         base_y = h / 2 - 26 + 190 * (0.55 + 0.45 * sc)
         c.create_text(w / 2, base_y + 34, text="  ".join(stxt),
-                      fill=_fade(ACCENT, 0.6), font=("Consolas", 10))
+                      fill=fade(ACCENT, 0.6), font=("Consolas", 10))
         now = datetime.now()
         c.create_text(w / 2, base_y + 66, text=now.strftime("%H:%M"),
-                      fill=_fade(WHITE, 0.72), font=("Consolas", 24))
+                      fill=fade(WHITE, 0.72), font=("Consolas", 24))
         c.create_text(w / 2, base_y + 90,
                       text=f"{_GUN[now.weekday()]}, {now.day} {_AY[now.month-1]}",
-                      fill=_fade(FG, 0.5), font=("Consolas", 9))
+                      fill=fade(FG, 0.5), font=("Consolas", 9))
 
         # --- mikrofon düğmesi + çevresinde dönen mini yaylar ---
         mx, my = w / 2, h - 84
@@ -1416,14 +1488,28 @@ class JarvisHUD:
         voice_on = bool(self.voice_input and getattr(self.voice_input, "_running", False))
         c.create_oval(mx - 26, my - 26, mx + 26, my + 26,
                       fill=_mix(BG, ACCENT_LOW, 0.18),
-                      outline=_fade(ACCENT, 0.8 if voice_on else 0.5), width=1)
+                      outline=fade(ACCENT, 0.8 if voice_on else 0.5), width=1)
         c.create_text(mx, my, text="🎤", font=("Segoe UI", 15),
-                      fill=_fade(WHITE, 0.9 if voice_on else 0.6))
+                      fill=fade(WHITE, 0.9 if voice_on else 0.6))
         for k in range(3):
             a0 = t * 55 + k * 120
             c.create_arc(mx - 34, my - 34, mx + 34, my + 34,
                          start=a0, extent=46, style="arc",
-                         outline=_fade(ACCENT, 0.62 if voice_on else 0.34), width=1)
+                         outline=fade(ACCENT, 0.62 if voice_on else 0.34), width=1)
+
+        # --- mikrofonun iki yanında ince dalga kanatları ---
+        active = self._voice_state in ("listening", "processing", "speaking")
+        amp = 2.2 + 4.5 * sc          # boşta fısıltı, aktifken canlı
+        wing_al = 0.28 + 0.3 * sc
+        for side in (1, -1):
+            pts = []
+            for i in range(0, 141, 6):
+                x = mx + side * (46 + i)
+                ph = t * (6 if active else 2.4) + i * 0.09
+                yy = (math.sin(ph) + 0.5 * math.sin(ph * 2.7 + 1.3)) \
+                    * amp * (1 - i / 160)
+                pts += [x, my + yy]
+            c.create_line(pts, fill=fade(ACCENT, wing_al), width=1, smooth=True)
 
         # --- sağ alt: HUD arayüzüne dönüş ---
         c.create_text(w - 26, h - 26, text="◈ HUD ARAYÜZÜ  [ESC]",
@@ -1593,6 +1679,7 @@ class JarvisHUD:
                     self.battery_lbl.config(text=f"{plug} {int(batt.percent)}%")
             except Exception:
                 pass
+        self._sys_vals = vals   # sakin mod telemetrisi de bunu okur
         for key, (cv, lbl) in self.bars.items():
             v = vals[key]
             cv.delete("all")
