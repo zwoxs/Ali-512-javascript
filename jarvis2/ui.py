@@ -31,20 +31,73 @@ except ImportError:
 # =====================================================================
 #  TEMALAR
 # =====================================================================
+# Her tema tam palet taşır: accent (ana vurgu), accent2 (koyu vurgu),
+# glow (parlama), bg/bg_soft/bg_card (arka plan katmanları), white (parlak
+# metin), fg/fg_dim (gövde metni). PURPLE varsayılan temadır (mor-siyah).
+_DARK = {"bg": "#05070a", "bg_soft": "#0b0f14", "bg_card": "#11161d",
+         "white": "#e8f4ff", "fg": "#c8d6e5", "fg_dim": "#5a6b7b"}
 THEMES = {
-    "CYAN":   {"accent": "#00e5ff", "accent2": "#0091ea", "glow": "#18ffff"},
-    "GREEN":  {"accent": "#00e676", "accent2": "#00c853", "glow": "#69f0ae"},
-    "RED":    {"accent": "#ff5252", "accent2": "#d50000", "glow": "#ff8a80"},
-    "GOLD":   {"accent": "#ffd54f", "accent2": "#ffab00", "glow": "#ffe57f"},
-    "PURPLE": {"accent": "#b388ff", "accent2": "#7c4dff", "glow": "#e1bee7"},
-    "MATRIX": {"accent": "#39ff14", "accent2": "#00ff41", "glow": "#76ff03"},
-    "ORANGE": {"accent": "#ff9100", "accent2": "#ff6d00", "glow": "#ffab40"},
+    "PURPLE": {"accent": "#c084fc", "accent2": "#6d28d9", "glow": "#e1bee7",
+               "bg": "#0a0512", "bg_soft": "#0c0518", "bg_card": "#0a0416",
+               "white": "#f1e6ff", "fg": "#cfc2e8", "fg_dim": "#6b5a8a"},
+    "VIOLET": {"accent": "#d4b3ff", "accent2": "#9d6bff", "glow": "#efe0ff",
+               "bg": "#120a20", "bg_soft": "#170d2a", "bg_card": "#140b24",
+               "white": "#f8f0ff", "fg": "#dccdf2", "fg_dim": "#7d6b9e"},
+    "CYAN":   {"accent": "#00e5ff", "accent2": "#0091ea", "glow": "#18ffff", **_DARK},
+    "GREEN":  {"accent": "#00e676", "accent2": "#00c853", "glow": "#69f0ae", **_DARK},
+    "RED":    {"accent": "#ff5252", "accent2": "#d50000", "glow": "#ff8a80", **_DARK},
+    "GOLD":   {"accent": "#ffd54f", "accent2": "#ffab00", "glow": "#ffe57f", **_DARK},
+    "MATRIX": {"accent": "#39ff14", "accent2": "#00ff41", "glow": "#76ff03", **_DARK},
+    "ORANGE": {"accent": "#ff9100", "accent2": "#ff6d00", "glow": "#ffab40", **_DARK},
 }
-BG = "#05070a"
-BG2 = "#0b0f14"
-BG3 = "#11161d"
-FG = "#c8d6e5"
-FG_DIM = "#5a6b7b"
+DEFAULT_THEME = "PURPLE"
+
+# Global palet değişkenleri — _apply_theme() ile değişir. Sakin mod her
+# karede bu globalleri okuduğu için tema değişikliği anında yansır.
+ACCENT = ACCENT_LOW = ACCENT_DIM = GLOW = ""
+BG = BG_SOFT = BG_CARD = BG2 = BG3 = ""
+WHITE = FG = FG_DIM = ""
+
+
+def _apply_theme(name):
+    """Global palet değişkenlerini seçilen temaya göre ayarlar."""
+    global ACCENT, ACCENT_LOW, ACCENT_DIM, GLOW
+    global BG, BG_SOFT, BG_CARD, BG2, BG3, WHITE, FG, FG_DIM
+    t = THEMES.get(name, THEMES[DEFAULT_THEME])
+    ACCENT = t["accent"]
+    ACCENT_LOW = t["accent2"]
+    ACCENT_DIM = ACCENT_LOW
+    GLOW = t["glow"]
+    BG = t["bg"]
+    BG_SOFT = BG2 = t["bg_soft"]
+    BG_CARD = BG3 = t["bg_card"]
+    WHITE = t["white"]
+    FG = t["fg"]
+    FG_DIM = t["fg_dim"]
+
+
+_apply_theme(DEFAULT_THEME)
+
+
+# ---- renk yardımcıları (sahte saydamlık: BG'ye doğru karıştır) ----
+def _hex_rgb(h):
+    h = h.lstrip("#")
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+
+def _mix(c1, c2, t):
+    """c1 → c2 arası doğrusal karışım (t: 0..1)."""
+    t = max(0.0, min(1.0, t))
+    r1, g1, b1 = _hex_rgb(c1)
+    r2, g2, b2 = _hex_rgb(c2)
+    return "#%02x%02x%02x" % (int(r1 + (r2 - r1) * t),
+                              int(g1 + (g2 - g1) * t),
+                              int(b1 + (b2 - b1) * t))
+
+
+def _fade(col, alpha):
+    """Rengi arka plana doğru soldurarak saydamlık taklidi yapar."""
+    return _mix(BG, col, alpha)
 
 _GUN = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"]
 _AY = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
@@ -64,7 +117,9 @@ class JarvisHUD:
         self.companion = companion
         self.settings = settings or {}
 
-        self.theme_name = "CYAN"
+        name = str(self.settings.get("theme", DEFAULT_THEME)).upper()
+        self.theme_name = name if name in THEMES else DEFAULT_THEME
+        _apply_theme(self.theme_name)
         self.theme = THEMES[self.theme_name]
         self.accent = self.theme["accent"]
 
@@ -72,8 +127,28 @@ class JarvisHUD:
         self._reactor_angle = 0.0
         self._radar_angle = 0.0
         self._wave_phase = 0.0
-        self._voice_state = "idle"   # idle / listening / processing
+        self._voice_state = "idle"   # idle / listening / processing / speaking
         self._particles = []
+
+        # sakin mod durumu
+        self._calm_visible = False
+        self._calm_t = 0.0
+        self._calm_scale = 0.0        # 0..1 arası yumuşatılmış aktiflik
+        self._calm_prev_state = "idle"
+        self._calm_stars = []         # arka plan yıldız alanı
+        self._calm_sparks = []        # durum değişimi kıvılcımları
+        self._calm_pulses = []        # dışa yayılan nabız halkaları
+        self._calm_pulse_cd = 0
+        self._calm_glitch = 0
+        self._calm_shoot = None       # nadir kayan yıldız
+        self._calm_hint_i = 0
+        self._calm_hint_f = 0
+        self._calm_mic_pos = (0, 0)
+        self._calm_hints = [
+            "REAKTÖR ÇEVRİMİÇİ", "AĞ STABİL", "GÜVENLİK PROTOKOLLERİ AKTİF",
+            "SENSÖR AĞI TARANIYOR", "ENERJİ AKIŞI NOMİNAL",
+            "TÜM SİSTEMLER NOMİNAL", "BEKLEME MODU",
+        ]
 
         # komut geçmişi
         self._cmd_history = []
@@ -90,8 +165,8 @@ class JarvisHUD:
             "buradan konuş", "sesi varsayılana al", "kulaklığa bağlan",
             "hoparlöre bağlan", "takma ad ekle kulaklık",
             "telefona bağlan", "arayüzü telefona geçir", "arayüzü bilgisayara al",
-            "/help", "/clear", "/theme CYAN", "/theme GREEN", "/theme MATRIX",
-            "/exit", "/stats",
+            "/help", "/clear", "/theme PURPLE", "/theme VIOLET", "/theme CYAN",
+            "/theme GREEN", "/theme MATRIX", "/exit", "/stats", "sakin mod",
         ]
 
         self._build_window()
@@ -119,8 +194,15 @@ class JarvisHUD:
         self._build_left_panel(body)
         self._build_center(body)
 
+        # sakin mod (tam ekran canvas, açılış görünümü)
+        self._build_calm_mode()
+        self.root.bind("<Escape>", lambda e: self._toggle_calm())
+
         # toast katmanı
         self._toasts = []
+
+        # uygulama açılışta sakin moda düşer
+        self.root.after(80, self._show_calm)
 
     def _build_topbar(self):
         bar = tk.Frame(self.root, bg=BG2, height=44)
@@ -148,6 +230,11 @@ class JarvisHUD:
                                   activebackground=BG, font=("Segoe UI", 11),
                                   cursor="hand2", command=self._toggle_mute)
         self.mute_btn.pack(side="right", padx=4)
+
+        self.calm_btn = tk.Button(right, text="◎", bg=BG3, fg=FG, bd=0,
+                                  activebackground=BG, font=("Segoe UI", 11),
+                                  cursor="hand2", command=self._toggle_calm)
+        self.calm_btn.pack(side="right", padx=4)
 
         self.voice_btn = tk.Button(right, text="🎤 OFF", bg=BG3, fg=FG_DIM, bd=0,
                                    activebackground=BG, font=("Consolas", 10, "bold"),
@@ -981,11 +1068,374 @@ class JarvisHUD:
             row += 1
 
     # =================================================================
+    #  SAKİN MOD — tam ekran arc-reactor rozeti
+    # =================================================================
+    # Tasarım ilkeleri: ince çizgi + düşük opaklık (BG'ye soldurma),
+    # sabit piksel boyutlar (DPI ölçeklemesine orantılama YOK),
+    # merkezden kenara uzanan kalın huzme/ışın YOK.
+    def _build_calm_mode(self):
+        import random
+        self.calm_c = tk.Canvas(self.root, bg=BG, highlightthickness=0)
+        self.calm_c.bind("<Button-1>", self._calm_click)
+        # yıldız alanı: göreli koordinatlar (0..1), yavaş sürüklenme + titreşim
+        self._calm_stars = [{
+            "x": random.random(), "y": random.random(),
+            "vx": random.uniform(-0.00006, 0.00006),
+            "vy": random.uniform(-0.00003, 0.00003),
+            "ph": random.uniform(0, math.tau),
+            "sp": random.uniform(0.6, 1.8),
+            "sz": random.choice((1, 1, 1, 2)),
+        } for _ in range(55)]
+        # yörünge uyduları (veri zerreleri)
+        self._calm_motes = [{
+            "tilt": math.radians(t), "speed": s, "ph": random.uniform(0, math.tau)
+        } for t, s in ((18, 0.35), (-24, 0.27), (64, 0.21))]
+
+    def _toggle_calm(self):
+        if self._calm_visible:
+            self._hide_calm()
+        else:
+            self._show_calm()
+
+    def _show_calm(self):
+        self.calm_c.place(x=0, y=0, relwidth=1, relheight=1)
+        tk.Misc.lift(self.calm_c)   # Canvas.lift öğe kaldırır, widget değil
+        self.calm_c.focus_set()
+        self._calm_visible = True
+
+    def _hide_calm(self):
+        self.calm_c.place_forget()
+        self._calm_visible = False
+        try:
+            self.entry.focus_set()
+        except Exception:
+            pass
+
+    def _calm_click(self, event):
+        w = self.calm_c.winfo_width() or 1
+        h = self.calm_c.winfo_height() or 1
+        mx, my = self._calm_mic_pos
+        if (event.x - mx) ** 2 + (event.y - my) ** 2 <= 36 ** 2:
+            self._toggle_voice()
+            return
+        if event.x > w - 180 and event.y > h - 56:
+            self._hide_calm()
+            return
+        # rozete tıklama: kıvılcım + nabız geri bildirimi
+        cx, cy = w / 2, h / 2 - 26
+        if (event.x - cx) ** 2 + (event.y - cy) ** 2 <= 200 ** 2:
+            self._calm_burst()
+
+    def _calm_burst(self):
+        import random
+        if len(self._calm_sparks) > 80:   # görünmezken birikmesin
+            del self._calm_sparks[:16]
+        for _ in range(16):
+            a = random.uniform(0, math.tau)
+            v = random.uniform(2.2, 4.6)
+            self._calm_sparks.append({
+                "a": a, "r": 120.0,
+                "vr": v, "life": 1.0,
+            })
+        self._calm_pulses.append({"r": 120.0, "v": 2.4, "a0": 0.5})
+
+    def _animate_calm(self):
+        if self._calm_visible:
+            try:
+                self._draw_calm_frame()
+            except Exception:
+                pass
+        self.root.after(20, self._animate_calm)   # ~50 fps
+
+    def _draw_calm_frame(self):
+        import random
+        c = self.calm_c
+        c.delete("all")
+        self._calm_t += 0.02
+        t = self._calm_t
+        w = c.winfo_width() or 1200
+        h = c.winfo_height() or 760
+
+        self._draw_calm_bg(c, w, h, t)
+        self._draw_calm_scene(c, w, h, t)
+
+    # ---- arka plan: radyal parlama, yıldızlar, köşe parantezleri ----
+    def _draw_calm_bg(self, c, w, h, t):
+        import random
+        cx, cy = w / 2, h / 2 - 26
+
+        # merkezden dışa mor-siyah radyal parlama (iç içe soluk oval katmanlar)
+        rmax = max(w, h) * 0.75
+        for i in range(9, 0, -1):
+            r = rmax * i / 9
+            col = _mix(BG, ACCENT_LOW, 0.085 * (1 - i / 9) ** 1.6)
+            c.create_oval(cx - r, cy - r * 0.82, cx + r, cy + r * 0.82,
+                          fill=col, outline="")
+
+        # yıldız alanı: yavaş sürüklenme + parlaklık titreşimi
+        for s in self._calm_stars:
+            s["x"] = (s["x"] + s["vx"]) % 1.0
+            s["y"] = (s["y"] + s["vy"]) % 1.0
+            b = 0.18 + 0.42 * abs(math.sin(t * s["sp"] + s["ph"]))
+            x, y = s["x"] * w, s["y"] * h
+            r = s["sz"]
+            c.create_oval(x - r, y - r, x + r, y + r,
+                          fill=_fade(WHITE, b), outline="")
+
+        # çok nadir, kısa ve soluk kayan yıldız
+        if self._calm_shoot is None and random.random() < 0.002:
+            self._calm_shoot = {"x": random.uniform(0.1, 0.9) * w,
+                                "y": random.uniform(0.05, 0.4) * h,
+                                "vx": random.choice((-1, 1)) * random.uniform(4, 6),
+                                "vy": random.uniform(1.5, 3), "life": 1.0}
+        if self._calm_shoot:
+            sh = self._calm_shoot
+            sh["x"] += sh["vx"]
+            sh["y"] += sh["vy"]
+            sh["life"] -= 0.04
+            if sh["life"] <= 0:
+                self._calm_shoot = None
+            else:
+                a = 0.3 * sh["life"]
+                c.create_line(sh["x"], sh["y"],
+                              sh["x"] - sh["vx"] * 7, sh["y"] - sh["vy"] * 7,
+                              fill=_fade(WHITE, a), width=1)
+
+        # köşe HUD parantezleri + üzerinde dolaşan minik ışık noktası
+        m, L = 22, 34
+        corners = [
+            ((m + L, m), (m, m), (m, m + L)),
+            ((w - m - L, m), (w - m, m), (w - m, m + L)),
+            ((w - m - L, h - m), (w - m, h - m), (w - m, h - m - L)),
+            ((m + L, h - m), (m, h - m), (m, h - m - L)),
+        ]
+        for p1, p2, p3 in corners:
+            c.create_line(*p1, *p2, *p3, fill=_fade(ACCENT, 0.45), width=1)
+        # ışık noktası: 4 parantezi sırayla dolaşır
+        prog = (t * 0.22) % 1.0
+        ci = int(prog * 4)
+        u = (prog * 4) % 1.0
+        p1, p2, p3 = corners[ci]
+        if u < 0.5:
+            k = u * 2
+            px = p1[0] + (p2[0] - p1[0]) * k
+            py = p1[1] + (p2[1] - p1[1]) * k
+        else:
+            k = (u - 0.5) * 2
+            px = p2[0] + (p3[0] - p2[0]) * k
+            py = p2[1] + (p3[1] - p2[1]) * k
+        c.create_oval(px - 1.6, py - 1.6, px + 1.6, py + 1.6,
+                      fill=_fade(GLOW, 0.9), outline="")
+
+        # üst orta: yumuşak fade ile dönen durum ipuçları
+        period = 320  # kare (~6.4 sn)
+        self._calm_hint_f = (self._calm_hint_f + 1) % period
+        f = self._calm_hint_f
+        if f == 0:
+            self._calm_hint_i = (self._calm_hint_i + 1) % len(self._calm_hints)
+        if f < 50:
+            alpha = f / 50
+        elif f > period - 50:
+            alpha = (period - f) / 50
+        else:
+            alpha = 1.0
+        hint = self._calm_hints[self._calm_hint_i]
+        c.create_text(w / 2, 34, text="  ".join(hint),
+                      fill=_fade(ACCENT, 0.55 * alpha),
+                      font=("Consolas", 9))
+
+    # ---- merkez sahne: rozet + uydu ögeleri ----
+    def _draw_calm_scene(self, c, w, h, t):
+        import random
+        # aktiflik hedefi: boşta küçük, dinlerken en büyük
+        target = {"idle": 0.0, "listening": 1.0,
+                  "processing": 0.7, "speaking": 0.85}.get(self._voice_state, 0.0)
+        self._calm_scale += (target - self._calm_scale) * 0.08
+        sc = self._calm_scale
+
+        # holografik glitch: sadece rozet birkaç piksel titrer
+        if self._calm_glitch > 0:
+            self._calm_glitch -= 1
+            gdx = random.uniform(-3, 3)
+            gdy = random.uniform(-2, 2)
+        else:
+            gdx = gdy = 0.0
+            if random.random() < 0.004:
+                self._calm_glitch = 3
+
+        breathe = 1 + 0.045 * math.sin(t * 1.7)
+        Rbase = 190 * (0.55 + 0.45 * sc)
+        R = Rbase * breathe
+        cx = w / 2 + gdx
+        cy = h / 2 - 26 + gdy
+
+        # dönen halkalar için mor ↔ mavi-mor renk kayması (shimmer)
+        shim = 0.5 + 0.5 * math.sin(t * 0.6)
+        deco_ac = _mix(ACCENT, "#7aa2ff", 0.45 * shim)
+
+        # --- dış chevron/diş halkası (18 üçgen, yavaş dönüş) ---
+        rj = R * 1.14
+        ang0 = t * 9
+        for k in range(18):
+            a = math.radians(ang0 + k * 20)
+            tipx = cx + (rj + 7) * math.cos(a)
+            tipy = cy + (rj + 7) * math.sin(a)
+            b1x = cx + rj * math.cos(a - 0.055)
+            b1y = cy + rj * math.sin(a - 0.055)
+            b2x = cx + rj * math.cos(a + 0.055)
+            b2y = cy + rj * math.sin(a + 0.055)
+            c.create_polygon(tipx, tipy, b1x, b1y, b2x, b2y,
+                             fill=_fade(deco_ac, 0.45), outline="")
+
+        # --- ince sabit çemberler ---
+        for r, a in ((R, 0.35), (R * 0.78, 0.3), (R * 0.55, 0.25)):
+            c.create_oval(cx - r, cy - r, cx + r, cy + r,
+                          outline=_fade(ACCENT, a), width=1)
+
+        # --- ince tik kadranı (60 çizgi) + dönen vurgu yayı ---
+        hl = (t * 24) % 360
+        for k in range(60):
+            adeg = k * 6
+            diff = min(abs(adeg - hl), 360 - abs(adeg - hl))
+            a = math.radians(adeg)
+            r1, r2 = R * 0.94, R * 0.99
+            al = 0.6 if diff < 18 else 0.22
+            c.create_line(cx + r1 * math.cos(a), cy + r1 * math.sin(a),
+                          cx + r2 * math.cos(a), cy + r2 * math.sin(a),
+                          fill=_fade(ACCENT, al), width=1)
+
+        # --- dış dönen yay parçaları + kromatik (RGB) kayma ---
+        for k in range(4):
+            a0 = t * 40 + k * 90
+            box = (cx - R - 8, cy - R - 8, cx + R + 8, cy + R + 8)
+            c.create_arc(box[0] + 2, box[1], box[2] + 2, box[3],
+                         start=a0, extent=38, style="arc",
+                         outline=_fade("#ff6666", 0.22), width=1)
+            c.create_arc(box[0] - 2, box[1], box[2] - 2, box[3],
+                         start=a0, extent=38, style="arc",
+                         outline=_fade("#5ee7ff", 0.22), width=1)
+            c.create_arc(*box, start=a0, extent=38, style="arc",
+                         outline=_fade(ACCENT, 0.85), width=2)
+
+        # --- dekoratif uydu noktaları (shimmer renkli) ---
+        for k in range(6):
+            a = math.radians(-t * 16 + k * 60)
+            x = cx + R * 0.88 * math.cos(a)
+            y = cy + R * 0.88 * math.sin(a)
+            c.create_oval(x - 2, y - 2, x + 2, y + 2,
+                          fill=_fade(deco_ac, 0.8), outline="")
+
+        # --- içte ters yönde dönen 22 noktalı ikinci kadran ---
+        for k in range(22):
+            a = math.radians(-t * 26 + k * (360 / 22))
+            x = cx + R * 0.66 * math.cos(a)
+            y = cy + R * 0.66 * math.sin(a)
+            c.create_oval(x - 1.4, y - 1.4, x + 1.4, y + 1.4,
+                          fill=_fade(deco_ac, 0.55), outline="")
+
+        # --- radar tarama huzmesi (kuyruğu sönümlenen) ---
+        sweep = -t * 130
+        for i in range(26):
+            a = math.radians(sweep + i * 2.4)
+            al = 0.42 * (1 - i / 26) ** 1.4
+            c.create_line(cx + R * 0.12 * math.cos(a), cy + R * 0.12 * math.sin(a),
+                          cx + R * 0.52 * math.cos(a), cy + R * 0.52 * math.sin(a),
+                          fill=_fade(ACCENT, al), width=1)
+
+        # --- çekirdek parlama ---
+        for r, col, al in ((R * 0.20, ACCENT_LOW, 0.35), (R * 0.14, ACCENT, 0.55),
+                           (R * 0.09, ACCENT, 1.0), (R * 0.045, WHITE, 1.0)):
+            c.create_oval(cx - r, cy - r, cx + r, cy + r,
+                          fill=_fade(col, al), outline="")
+
+        # --- dışa yayılan nabız halkaları (boşta da, daha yavaş/soluk) ---
+        self._calm_pulse_cd -= 1
+        if self._calm_pulse_cd <= 0:
+            idle = self._voice_state == "idle"
+            self._calm_pulses.append({"r": R * 0.95,
+                                      "v": 1.1 if idle else 2.2,
+                                      "a0": 0.22 if idle else 0.45})
+            self._calm_pulse_cd = 135 if idle else 62
+        alive = []
+        for p in self._calm_pulses:
+            p["r"] += p["v"]
+            span = R * 0.85
+            k = (p["r"] - R * 0.95) / span
+            if k < 1.0:
+                al = p["a0"] * (1 - k)
+                r = p["r"]
+                c.create_oval(cx - r, cy - r, cx + r, cy + r,
+                              outline=_fade(ACCENT, al), width=1)
+                alive.append(p)
+        self._calm_pulses = alive
+
+        # --- durum değişimi kıvılcımları ---
+        alive = []
+        for s in self._calm_sparks:
+            s["r"] += s["vr"]
+            s["life"] -= 0.045
+            if s["life"] > 0:
+                x = cx + s["r"] * math.cos(s["a"])
+                y = cy + s["r"] * math.sin(s["a"])
+                c.create_oval(x - 1.8, y - 1.8, x + 1.8, y + 1.8,
+                              fill=_fade(GLOW, s["life"]), outline="")
+                alive.append(s)
+        self._calm_sparks = alive
+
+        # --- eğik yörüngelerde süzülen veri zerreleri (kuyruklu) ---
+        for mo in self._calm_motes:
+            rx, ry = R * 1.32, R * 0.44
+            ct_, st_ = math.cos(mo["tilt"]), math.sin(mo["tilt"])
+            for j in range(5):
+                a = t * mo["speed"] * 2 - j * 0.09 + mo["ph"]
+                ex, ey = rx * math.cos(a), ry * math.sin(a)
+                x = cx + ex * ct_ - ey * st_
+                y = cy + ex * st_ + ey * ct_
+                al = (0.7 if j == 0 else 0.32 * (1 - j / 5))
+                r = 2 if j == 0 else 1.2
+                c.create_oval(x - r, y - r, x + r, y + r,
+                              fill=_fade(deco_ac, al), outline="")
+
+        # --- rozet altı: durum etiketi + yumuşak saat ---
+        labels = {"idle": "BEKLEMEDE", "listening": "DİNLİYOR",
+                  "processing": "İŞLİYOR", "speaking": "KONUŞUYOR"}
+        stxt = labels.get(self._voice_state, "BEKLEMEDE")
+        base_y = h / 2 - 26 + 190 * (0.55 + 0.45 * sc)
+        c.create_text(w / 2, base_y + 34, text="  ".join(stxt),
+                      fill=_fade(ACCENT, 0.6), font=("Consolas", 10))
+        now = datetime.now()
+        c.create_text(w / 2, base_y + 66, text=now.strftime("%H:%M"),
+                      fill=_fade(WHITE, 0.72), font=("Consolas", 24))
+        c.create_text(w / 2, base_y + 90,
+                      text=f"{_GUN[now.weekday()]}, {now.day} {_AY[now.month-1]}",
+                      fill=_fade(FG, 0.5), font=("Consolas", 9))
+
+        # --- mikrofon düğmesi + çevresinde dönen mini yaylar ---
+        mx, my = w / 2, h - 84
+        self._calm_mic_pos = (mx, my)
+        voice_on = bool(self.voice_input and getattr(self.voice_input, "_running", False))
+        c.create_oval(mx - 26, my - 26, mx + 26, my + 26,
+                      fill=_mix(BG, ACCENT_LOW, 0.18),
+                      outline=_fade(ACCENT, 0.8 if voice_on else 0.5), width=1)
+        c.create_text(mx, my, text="🎤", font=("Segoe UI", 15),
+                      fill=_fade(WHITE, 0.9 if voice_on else 0.6))
+        for k in range(3):
+            a0 = t * 55 + k * 120
+            c.create_arc(mx - 34, my - 34, mx + 34, my + 34,
+                         start=a0, extent=46, style="arc",
+                         outline=_fade(ACCENT, 0.62 if voice_on else 0.34), width=1)
+
+        # --- sağ alt: HUD arayüzüne dönüş ---
+        c.create_text(w - 26, h - 26, text="◈ HUD ARAYÜZÜ  [ESC]",
+                      anchor="se", fill=_fade(FG, 0.5), font=("Consolas", 9))
+
+    # =================================================================
     #  ANİMASYONLAR
     # =================================================================
     def _start_animations(self):
         self._animate_reactor()
         self._animate_wave()
+        self._animate_calm()
 
     def _animate_reactor(self):
         c = self.reactor
@@ -1075,6 +1525,10 @@ class JarvisHUD:
         self.root.after(60, self._animate_wave)
 
     def set_voice_state(self, state):
+        if state != self._calm_prev_state:
+            self._calm_prev_state = state
+            # sakin modda durum geçişi: kıvılcım + genişleyen halka
+            self._calm_burst()
         self._voice_state = state
         labels = {"idle": "SİSTEM HAZIR", "listening": "DİNLİYORUM…",
                   "processing": "İŞLENİYOR…", "speaking": "KONUŞUYOR…"}
@@ -1175,8 +1629,20 @@ class JarvisHUD:
             return
         self.theme_name = name
         self.theme = THEMES[name]
-        self.accent = self.theme["accent"]
+        _apply_theme(name)
+        self.accent = ACCENT
         self.theme_var.set(name)
+        # sakin mod her karede globalleri okur; canvas zeminini de eşitle
+        try:
+            self.calm_c.config(bg=BG)
+        except Exception:
+            pass
+        # temayı kalıcı yap
+        try:
+            self.settings["theme"] = name
+            save_settings(self.settings)
+        except Exception:
+            pass
         # renkleri güncelle
         for widget in [self.title_lbl, self.top_clock, self.digital_clock,
                        self.status_lbl, self.home_lbl]:
