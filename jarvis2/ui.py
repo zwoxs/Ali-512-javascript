@@ -59,21 +59,56 @@ BG = BG_SOFT = BG_CARD = BG2 = BG3 = ""
 WHITE = FG = FG_DIM = ""
 
 
-def _apply_theme(name):
-    """Global palet değişkenlerini seçilen temaya göre ayarlar."""
+_PAL_KEYS = ("accent", "accent2", "glow", "bg", "bg_soft", "bg_card",
+             "white", "fg", "fg_dim")
+_THEME_FROM = {}
+_THEME_TO = {}
+_THEME_PROG = 1.0
+
+
+def _set_theme_globals(p):
     global ACCENT, ACCENT_LOW, ACCENT_DIM, GLOW
     global BG, BG_SOFT, BG_CARD, BG2, BG3, WHITE, FG, FG_DIM
-    t = THEMES.get(name, THEMES[DEFAULT_THEME])
-    ACCENT = t["accent"]
-    ACCENT_LOW = t["accent2"]
+    ACCENT = p["accent"]
+    ACCENT_LOW = p["accent2"]
     ACCENT_DIM = ACCENT_LOW
-    GLOW = t["glow"]
-    BG = t["bg"]
-    BG_SOFT = BG2 = t["bg_soft"]
-    BG_CARD = BG3 = t["bg_card"]
-    WHITE = t["white"]
-    FG = t["fg"]
-    FG_DIM = t["fg_dim"]
+    GLOW = p["glow"]
+    BG = p["bg"]
+    BG_SOFT = BG2 = p["bg_soft"]
+    BG_CARD = BG3 = p["bg_card"]
+    WHITE = p["white"]
+    FG = p["fg"]
+    FG_DIM = p["fg_dim"]
+
+
+def _apply_theme(name, animate=False):
+    """Palet hedefini ayarlar; animate=True ise renkler kademeli akar
+    (_theme_tick her karede hedefe doğru bir adım karıştırır)."""
+    global _THEME_FROM, _THEME_TO, _THEME_PROG
+    t = THEMES.get(name, THEMES[DEFAULT_THEME])
+    _THEME_TO = {k: t[k] for k in _PAL_KEYS}
+    if animate and ACCENT:
+        _THEME_FROM = {"accent": ACCENT, "accent2": ACCENT_LOW, "glow": GLOW,
+                       "bg": BG, "bg_soft": BG_SOFT, "bg_card": BG_CARD,
+                       "white": WHITE, "fg": FG, "fg_dim": FG_DIM}
+        _THEME_PROG = 0.0
+    else:
+        _THEME_FROM = dict(_THEME_TO)
+        _THEME_PROG = 1.0
+        _set_theme_globals(_THEME_TO)
+
+
+def _theme_tick(step=0.05):
+    """Tema geçişini bir adım ilerletir; renk değiştiyse True döner."""
+    global _THEME_PROG
+    if _THEME_PROG >= 1.0:
+        return False
+    _THEME_PROG = min(1.0, _THEME_PROG + step)
+    k = _THEME_PROG
+    ease = k * k * (3 - 2 * k)   # smoothstep
+    _set_theme_globals({key: _mix(_THEME_FROM[key], _THEME_TO[key], ease)
+                        for key in _PAL_KEYS})
+    return True
 
 
 _apply_theme(DEFAULT_THEME)
@@ -158,6 +193,9 @@ class JarvisHUD:
         self._calm_dt = 0.02          # uyarlanabilir kare süresi (sn)
         self._calm_last_mouse_move = 0.0
         self._last_activity = time.time()  # otomatik sakin mod için
+        self._calm_dim = 1.0          # gece kısılması (1.0 gündüz, 0.6 gece)
+        self._calm_night = None       # None=saate göre; test/manuel override
+        self._calm_rem_dt = None      # sıradaki hatırlatıcının zamanı
         self._calm_hints = [
             "REAKTÖR ÇEVRİMİÇİ", "AĞ STABİL", "GÜVENLİK PROTOKOLLERİ AKTİF",
             "SENSÖR AĞI TARANIYOR", "ENERJİ AKIŞI NOMİNAL",
@@ -1114,6 +1152,7 @@ class JarvisHUD:
             "ph": random.uniform(0, math.tau),
             "sp": random.uniform(0.6, 1.8),
             "sz": random.choice((1, 1, 1, 2)),
+            "ac": random.random() < 0.15,   # %15'i vurgu renginde
         } for _ in range(55)]
         # yörünge uyduları (veri zerreleri)
         self._calm_motes = [{
@@ -1246,6 +1285,16 @@ class JarvisHUD:
         w = c.winfo_width() or 1200
         h = c.winfo_height() or 760
 
+        # tema geçişi: renkler hedefe doğru akar
+        if _theme_tick():
+            c.config(bg=BG)
+
+        # gece kısılması: 23:00–07:00 arası genel parlaklık yumuşakça düşer
+        hr = datetime.now().hour
+        night = (self._calm_night if self._calm_night is not None
+                 else (hr >= 23 or hr < 7))
+        self._calm_dim += ((0.6 if night else 1.0) - self._calm_dim) * 0.03
+
         # fare ofsetini yumuşat (paralaks için)
         tx, ty = self._calm_mouse_t
         self._calm_mouse[0] += (tx - self._calm_mouse[0]) * 0.05
@@ -1258,12 +1307,13 @@ class JarvisHUD:
     def _draw_calm_bg(self, c, w, h, t):
         import random
         cx, cy = w / 2, h / 2 - 26
+        dim = self._calm_dim   # gece kısılması çarpanı
 
         # merkezden dışa mor-siyah radyal parlama (iç içe soluk oval katmanlar)
         rmax = max(w, h) * 0.75
         for i in range(9, 0, -1):
             r = rmax * i / 9
-            col = _mix(BG, ACCENT_LOW, 0.085 * (1 - i / 9) ** 1.6)
+            col = _mix(BG, ACCENT_LOW, 0.085 * dim * (1 - i / 9) ** 1.6)
             c.create_oval(cx - r, cy - r * 0.82, cx + r, cy + r * 0.82,
                           fill=col, outline="")
 
@@ -1272,13 +1322,14 @@ class JarvisHUD:
         for s in self._calm_stars:
             s["x"] = (s["x"] + s["vx"]) % 1.0
             s["y"] = (s["y"] + s["vy"]) % 1.0
-            b = 0.18 + 0.42 * abs(math.sin(t * s["sp"] + s["ph"]))
+            b = (0.18 + 0.42 * abs(math.sin(t * s["sp"] + s["ph"]))) * dim
             depth = 0.5 if s["sz"] == 1 else 1.0   # büyük yıldız = yakın katman
             x = s["x"] * w - mxo * 9 * depth
             y = s["y"] * h - myo * 7 * depth
             r = s["sz"]
             c.create_oval(x - r, y - r, x + r, y + r,
-                          fill=_fade(WHITE, b), outline="")
+                          fill=_fade(ACCENT if s["ac"] else WHITE, b),
+                          outline="")
 
         # çok nadir, kısa ve soluk kayan yıldız
         if self._calm_shoot is None and random.random() < 0.002:
@@ -1294,7 +1345,7 @@ class JarvisHUD:
             if sh["life"] <= 0:
                 self._calm_shoot = None
             else:
-                a = 0.3 * sh["life"]
+                a = 0.3 * sh["life"] * dim
                 c.create_line(sh["x"], sh["y"],
                               sh["x"] - sh["vx"] * 7, sh["y"] - sh["vy"] * 7,
                               fill=_fade(WHITE, a), width=1)
@@ -1308,7 +1359,7 @@ class JarvisHUD:
             ((m + L, h - m), (m, h - m), (m, h - m - L)),
         ]
         for p1, p2, p3 in corners:
-            c.create_line(*p1, *p2, *p3, fill=_fade(ACCENT, 0.45), width=1)
+            c.create_line(*p1, *p2, *p3, fill=_fade(ACCENT, 0.45 * dim), width=1)
         # ışık noktası: 4 parantezi sırayla dolaşır
         prog = (t * 0.22) % 1.0
         ci = int(prog * 4)
@@ -1323,7 +1374,7 @@ class JarvisHUD:
             px = p2[0] + (p3[0] - p2[0]) * k
             py = p2[1] + (p3[1] - p2[1]) * k
         c.create_oval(px - 1.6, py - 1.6, px + 1.6, py + 1.6,
-                      fill=_fade(GLOW, 0.9), outline="")
+                      fill=_fade(GLOW, 0.9 * dim), outline="")
 
         # üst orta: yumuşak fade ile dönen durum ipuçları
         period = 320  # kare (~6.4 sn)
@@ -1339,10 +1390,11 @@ class JarvisHUD:
             alpha = 1.0
         hint = self._calm_hints[self._calm_hint_i]
         c.create_text(w / 2, 34, text="  ".join(hint),
-                      fill=_fade(ACCENT, 0.55 * alpha),
+                      fill=_fade(ACCENT, 0.55 * alpha * dim),
                       font=("Consolas", 9))
 
         # ipuçlarının altında: son JARVIS yanıtının fısıltısı (~9 sn)
+        # (bilgi taşıdığı için gecede fazla kısılmaz)
         if self._calm_whisper:
             wtxt, wts = self._calm_whisper
             age = time.time() - wts
@@ -1351,7 +1403,8 @@ class JarvisHUD:
             else:
                 env = min(1.0, age / 0.5) * min(1.0, max(0.0, (9 - age) / 2))
                 c.create_text(w / 2, 58, text=wtxt,
-                              fill=_fade(WHITE, 0.5 * env), font=("Consolas", 9))
+                              fill=_fade(WHITE, 0.5 * env * max(dim, 0.85)),
+                              font=("Consolas", 9))
 
         # sol üst: hava durumu köşesi
         wd = self._calm_weather
@@ -1359,7 +1412,7 @@ class JarvisHUD:
             try:
                 wtx = f"{wd['icon']} {wd['temp']}°  {str(wd['desc']).upper()[:20]}"
                 c.create_text(26, 34, anchor="w", text=wtx,
-                              fill=_fade(FG, 0.45), font=("Consolas", 9))
+                              fill=_fade(FG, 0.45 * dim), font=("Consolas", 9))
             except Exception:
                 pass
 
@@ -1372,7 +1425,7 @@ class JarvisHUD:
         ram = self._sys_vals.get("RAM", 0)
         tele = f"CPU {cpu:.0f}%   ·   RAM {ram:.0f}%   ·   OTURUM {up_min} DK"
         c.create_text(26, h - 26, anchor="sw", text=tele,
-                      fill=_fade(FG, 0.42), font=("Consolas", 9))
+                      fill=_fade(FG, 0.42 * dim), font=("Consolas", 9))
 
         # sağ üst: bekleyen bildirim rozeti (tıklanınca HUD'a geçer)
         if self._calm_notif:
@@ -1389,14 +1442,23 @@ class JarvisHUD:
     # ---- merkez sahne: rozet + uydu ögeleri ----
     def _draw_calm_scene(self, c, w, h, t):
         import random
-        # açılış geçişi: sahne yumuşakça belirir
+        # açılış geçişi: sahne yumuşakça belirir + reaktör parça parça kurulur
         self._calm_intro += (1 - self._calm_intro) * 0.06
         if self._calm_intro > 0.995:
             self._calm_intro = 1.0
         ia = self._calm_intro
+        dim = self._calm_dim
 
         def fade(col, a):
-            return _fade(col, a * ia)
+            return _fade(col, a * ia * dim)
+
+        def stage(a0, a1):
+            """Kurulum sahnesi: ia [a0..a1] aralığında 0→1 rampası."""
+            if ia >= a1:
+                return 1.0
+            if ia <= a0:
+                return 0.0
+            return (ia - a0) / (a1 - a0)
 
         # aktiflik hedefi: boşta küçük, dinlerken en büyük
         target = {"idle": 0.0, "listening": 1.0,
@@ -1428,10 +1490,10 @@ class JarvisHUD:
         shim = 0.5 + 0.5 * math.sin(t * 0.6)
         deco_ac = _mix(ACCENT, "#7aa2ff", 0.45 * shim)
 
-        # --- dış chevron/diş halkası (18 üçgen, yavaş dönüş) ---
+        # --- dış chevron/diş halkası (18 üçgen, kurulumda sırayla belirir) ---
         rj = R * 1.14
         ang0 = t * 9
-        for k in range(18):
+        for k in range(int(18 * stage(0.5, 0.85))):
             a = math.radians(ang0 + k * 20)
             tipx = cx + (rj + 7) * math.cos(a)
             tipy = cy + (rj + 7) * math.sin(a)
@@ -1442,15 +1504,21 @@ class JarvisHUD:
             c.create_polygon(tipx, tipy, b1x, b1y, b2x, b2y,
                              fill=fade(deco_ac, 0.45), outline="")
 
-        # --- ince sabit çemberler ---
+        # --- ince sabit çemberler (kurulumda yay olarak çizilir) ---
+        s_circ = stage(0.15, 0.5)
         for r, a in ((R, 0.35), (R * 0.78, 0.3), (R * 0.55, 0.25)):
-            c.create_oval(cx - r, cy - r, cx + r, cy + r,
-                          outline=fade(ACCENT, a), width=1)
+            if s_circ < 1.0:
+                c.create_arc(cx - r, cy - r, cx + r, cy + r,
+                             start=90, extent=-359.9 * s_circ, style="arc",
+                             outline=fade(ACCENT, a), width=1)
+            else:
+                c.create_oval(cx - r, cy - r, cx + r, cy + r,
+                              outline=fade(ACCENT, a), width=1)
 
         # --- ince tik kadranı (60 tik = 60 saniye, gerçek saniye ibresi) ---
         now = datetime.now()
         hl = ((now.second + now.microsecond / 1e6) * 6 - 90) % 360
-        for k in range(60):
+        for k in range(int(60 * stage(0.35, 0.65))):
             adeg = k * 6
             diff = min(abs(adeg - hl), 360 - abs(adeg - hl))
             a = math.radians(adeg)
@@ -1461,59 +1529,87 @@ class JarvisHUD:
                           fill=fade(ACCENT, al), width=1)
 
         # --- rozet içinde yavaşça dönen mikro-yazı halkası ---
-        ring_txt = "JARVIS · STARK INDUSTRIES · ARC REACTOR · MK VII · "
-        n = len(ring_txt)
-        rr = R * 0.715
-        base = -t * 5
-        for i, ch in enumerate(ring_txt):
-            if ch == " ":
-                continue
-            adeg = base + i * (360 / n)
-            a = math.radians(adeg)
-            x = cx + rr * math.cos(a)
-            y = cy + rr * math.sin(a)
-            try:
-                c.create_text(x, y, text=ch, fill=fade(ACCENT, 0.3),
-                              font=("Consolas", 7), angle=-adeg - 90)
-            except tk.TclError:
-                c.create_text(x, y, text=ch, fill=fade(ACCENT, 0.3),
-                              font=("Consolas", 7))
+        s_txt = stage(0.3, 0.55)
+        if s_txt > 0:
+            ring_txt = "JARVIS · STARK INDUSTRIES · ARC REACTOR · MK VII · "
+            n = len(ring_txt)
+            rr = R * 0.715
+            base = -t * 5
+            for i, ch in enumerate(ring_txt):
+                if ch == " ":
+                    continue
+                adeg = base + i * (360 / n)
+                a = math.radians(adeg)
+                x = cx + rr * math.cos(a)
+                y = cy + rr * math.sin(a)
+                try:
+                    c.create_text(x, y, text=ch, fill=fade(ACCENT, 0.3 * s_txt),
+                                  font=("Consolas", 7), angle=-adeg - 90)
+                except tk.TclError:
+                    c.create_text(x, y, text=ch, fill=fade(ACCENT, 0.3 * s_txt),
+                                  font=("Consolas", 7))
+
+        # --- amber geri sayım yayı: hatırlatıcıya son 10 dakika ---
+        if self._calm_rem_dt:
+            rem_s = (self._calm_rem_dt - now).total_seconds()
+            if 0 < rem_s <= 600:
+                frac = rem_s / 600
+                amber = "#ffb74d"
+                ra = R * 0.85
+                s_amb = stage(0.6, 0.9)
+                c.create_arc(cx - ra, cy - ra, cx + ra, cy + ra,
+                             start=90, extent=-359.9 * frac, style="arc",
+                             outline=fade(amber, 0.5 * s_amb), width=1)
+                th = math.radians(90 - 360 * frac)
+                px_ = cx + ra * math.cos(th)
+                py_ = cy - ra * math.sin(th)
+                pl = 0.6 + 0.25 * math.sin(t * 4)
+                c.create_oval(px_ - 2, py_ - 2, px_ + 2, py_ + 2,
+                              fill=fade(amber, pl * s_amb), outline="")
+                c.create_text(cx, cy - ra - 12,
+                              text=f"⏰ {int(rem_s // 60) + 1} DK",
+                              fill=fade(amber, 0.55 * s_amb),
+                              font=("Consolas", 8))
 
         # --- dış dönen yay parçaları + kromatik (RGB) kayma ---
+        s_arc = stage(0.55, 0.85)
         for k in range(4):
             a0 = t * 40 + k * 90
             box = (cx - R - 8, cy - R - 8, cx + R + 8, cy + R + 8)
             c.create_arc(box[0] + 2, box[1], box[2] + 2, box[3],
                          start=a0, extent=38, style="arc",
-                         outline=fade("#ff6666", 0.22), width=1)
+                         outline=fade("#ff6666", 0.22 * s_arc), width=1)
             c.create_arc(box[0] - 2, box[1], box[2] - 2, box[3],
                          start=a0, extent=38, style="arc",
-                         outline=fade("#5ee7ff", 0.22), width=1)
+                         outline=fade("#5ee7ff", 0.22 * s_arc), width=1)
             c.create_arc(*box, start=a0, extent=38, style="arc",
-                         outline=fade(ACCENT, 0.85), width=2)
+                         outline=fade(ACCENT, 0.85 * s_arc), width=2)
 
         # --- dekoratif uydu noktaları (shimmer renkli) ---
+        s_sat = stage(0.6, 0.9)
         for k in range(6):
             a = math.radians(-t * 16 + k * 60)
             x = cx + R * 0.88 * math.cos(a)
             y = cy + R * 0.88 * math.sin(a)
             c.create_oval(x - 2, y - 2, x + 2, y + 2,
-                          fill=fade(deco_ac, 0.8), outline="")
+                          fill=fade(deco_ac, 0.8 * s_sat), outline="")
 
         # --- içte ters yönde dönen 22 noktalı ikinci kadran ---
+        s_dial = stage(0.2, 0.45)
         for k in range(22):
             a = math.radians(-t * 26 + k * (360 / 22))
             x = cx + R * 0.66 * math.cos(a)
             y = cy + R * 0.66 * math.sin(a)
             c.create_oval(x - 1.4, y - 1.4, x + 1.4, y + 1.4,
-                          fill=fade(deco_ac, 0.55), outline="")
+                          fill=fade(deco_ac, 0.55 * s_dial), outline="")
 
         # --- radar tarama huzmesi (işlem sırasında hızlanır) ---
         self._calm_sweep -= 6.2 if self._voice_state == "processing" else 2.6
         sweep = self._calm_sweep
+        s_swp = stage(0.15, 0.4)
         for i in range(26):
             a = math.radians(sweep + i * 2.4)
-            al = 0.42 * (1 - i / 26) ** 1.4
+            al = 0.42 * (1 - i / 26) ** 1.4 * s_swp
             c.create_line(cx + R * 0.12 * math.cos(a), cy + R * 0.12 * math.sin(a),
                           cx + R * 0.52 * math.cos(a), cy + R * 0.52 * math.sin(a),
                           fill=fade(ACCENT, al), width=1)
@@ -1571,7 +1667,8 @@ class JarvisHUD:
         self._calm_sparks = alive
 
         # --- eğik yörüngelerde süzülen veri zerreleri (kuyruklu) ---
-        for mo in self._calm_motes:
+        s_mote = stage(0.7, 1.0)
+        for mo in (self._calm_motes if s_mote > 0 else ()):
             rx, ry = R * 1.32, R * 0.44
             ct_, st_ = math.cos(mo["tilt"]), math.sin(mo["tilt"])
             for j in range(5):
@@ -1579,34 +1676,43 @@ class JarvisHUD:
                 ex, ey = rx * math.cos(a), ry * math.sin(a)
                 x = cx + ex * ct_ - ey * st_
                 y = cy + ex * st_ + ey * ct_
-                al = (0.7 if j == 0 else 0.32 * (1 - j / 5))
+                al = (0.7 if j == 0 else 0.32 * (1 - j / 5)) * s_mote
                 r = 2 if j == 0 else 1.2
                 c.create_oval(x - r, y - r, x + r, y + r,
                               fill=fade(deco_ac, al), outline="")
 
         # --- rozet altı: durum etiketi + yumuşak saat ---
+        s_ui = stage(0.75, 1.0)
         labels = {"idle": "BEKLEMEDE", "listening": "DİNLİYOR",
                   "processing": "İŞLİYOR", "speaking": "KONUŞUYOR"}
         stxt = labels.get(self._voice_state, "BEKLEMEDE")
         base_y = h / 2 - 26 + 190 * (0.55 + 0.45 * sc)
         c.create_text(w / 2, base_y + 34, text="  ".join(stxt),
-                      fill=fade(ACCENT, 0.6), font=("Consolas", 10))
+                      fill=fade(ACCENT, 0.6 * s_ui), font=("Consolas", 10))
         c.create_text(w / 2, base_y + 66, text=now.strftime("%H:%M"),
-                      fill=fade(WHITE, 0.72), font=("Consolas", 24))
+                      fill=fade(WHITE, 0.72 * s_ui), font=("Consolas", 24))
         c.create_text(w / 2, base_y + 90,
                       text=f"{_GUN[now.weekday()]}, {now.day} {_AY[now.month-1]}",
-                      fill=fade(FG, 0.5), font=("Consolas", 9))
+                      fill=fade(FG, 0.5 * s_ui), font=("Consolas", 9))
 
         # --- ajanda satırı: sıradaki hatırlatıcı + açık görevler (boşta) ---
         if t - self._calm_agenda_ts > 5:
             self._calm_agenda_ts = t
             parts = []
+            self._calm_rem_dt = None
             try:
-                rems = self.orch.memory.list_reminders()
-                if rems:
-                    r0 = rems[0]
-                    at = str(r0.get("at", "")).strip()[-5:]
-                    parts.append(f"⏰ {at}  {str(r0.get('text', ''))[:24]}")
+                best = None
+                for r in self.orch.memory.list_reminders():
+                    try:
+                        dtv = datetime.fromisoformat(str(r.get("at", "")))
+                    except (TypeError, ValueError):
+                        continue
+                    if best is None or dtv < best[0]:
+                        best = (dtv, r)
+                if best:
+                    self._calm_rem_dt = best[0]
+                    parts.append(f"⏰ {best[0].strftime('%H:%M')}  "
+                                 f"{str(best[1].get('text', ''))[:24]}")
             except Exception:
                 pass
             try:
@@ -1619,7 +1725,7 @@ class JarvisHUD:
             self._calm_agenda = "   ·   ".join(parts)
         if self._calm_agenda and sc < 0.3:
             c.create_text(w / 2, base_y + 114, text=self._calm_agenda,
-                          fill=fade(FG, 0.42), font=("Consolas", 9))
+                          fill=fade(FG, 0.42 * s_ui), font=("Consolas", 9))
 
         # --- mikrofon düğmesi + çevresinde dönen mini yaylar ---
         mx, my = w / 2, h - 84
@@ -1629,15 +1735,17 @@ class JarvisHUD:
         voice_on = bool(self.voice_input and getattr(self.voice_input, "_running", False))
         hov = 0.22 if near_mic else 0.0
         c.create_oval(mx - 26, my - 26, mx + 26, my + 26,
-                      fill=_mix(BG, ACCENT_LOW, 0.18 + 0.1 * (near_mic)),
-                      outline=fade(ACCENT, (0.8 if voice_on else 0.5) + hov), width=1)
+                      fill=_mix(BG, ACCENT_LOW, (0.18 + 0.1 * near_mic) * s_ui),
+                      outline=fade(ACCENT, ((0.8 if voice_on else 0.5) + hov) * s_ui),
+                      width=1)
         c.create_text(mx, my, text="🎤", font=("Segoe UI", 15),
-                      fill=fade(WHITE, (0.9 if voice_on else 0.6) + hov))
+                      fill=fade(WHITE, ((0.9 if voice_on else 0.6) + hov) * s_ui))
         for k in range(3):
             a0 = t * 55 + k * 120
             c.create_arc(mx - 34, my - 34, mx + 34, my + 34,
                          start=a0, extent=46, style="arc",
-                         outline=fade(ACCENT, (0.62 if voice_on else 0.34) + hov),
+                         outline=fade(ACCENT,
+                                      ((0.62 if voice_on else 0.34) + hov) * s_ui),
                          width=1)
         if near_mic:
             tip = "SESLİ MODU KAPAT" if voice_on else "SESLİ MODU AÇ"
@@ -1656,7 +1764,8 @@ class JarvisHUD:
                 yy = (math.sin(ph) + 0.5 * math.sin(ph * 2.7 + 1.3)) \
                     * amp * (1 - i / 160)
                 pts += [x, my + yy]
-            c.create_line(pts, fill=fade(ACCENT, wing_al), width=1, smooth=True)
+            c.create_line(pts, fill=fade(ACCENT, wing_al * s_ui), width=1,
+                          smooth=True)
 
         # --- sağ alt: HUD arayüzüne dönüş (hover'da parlar) ---
         near_hud = mpx > w - 180 and mpy > h - 56
@@ -1867,8 +1976,8 @@ class JarvisHUD:
             return
         self.theme_name = name
         self.theme = THEMES[name]
-        _apply_theme(name)
-        self.accent = ACCENT
+        _apply_theme(name, animate=True)   # sakin mod renkleri akarak döner
+        self.accent = self.theme["accent"]
         self.theme_var.set(name)
         # sakin mod her karede globalleri okur; canvas zeminini de eşitle
         try:
