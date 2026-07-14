@@ -147,11 +147,15 @@ class JarvisHUD:
         self._calm_intro = 0.0        # açılış geçişi (0 → 1)
         self._calm_mouse = [0.0, 0.0]  # yumuşatılmış fare ofseti (-0.5..0.5)
         self._calm_mouse_t = (0.0, 0.0)
+        self._calm_mouse_px = (-999, -999)  # hover için ham piksel konumu
+        self._calm_notif = 0          # sakin moddayken gelen bildirim sayısı
+        self._calm_sweep = 0.0        # radar açısı (hız durumla değişir)
         self._sys_vals = {}           # calm telemetri için son sistem değerleri
         self._calm_hints = [
             "REAKTÖR ÇEVRİMİÇİ", "AĞ STABİL", "GÜVENLİK PROTOKOLLERİ AKTİF",
             "SENSÖR AĞI TARANIYOR", "ENERJİ AKIŞI NOMİNAL",
             "TÜM SİSTEMLER NOMİNAL", "BEKLEME MODU",
+            "YAZARAK KOMUT VEREBİLİRSİNİZ",
         ]
 
         # komut geçmişi
@@ -1082,6 +1086,7 @@ class JarvisHUD:
         self.calm_c = tk.Canvas(self.root, bg=BG, highlightthickness=0)
         self.calm_c.bind("<Button-1>", self._calm_click)
         self.calm_c.bind("<Motion>", self._calm_motion)
+        self.calm_c.bind("<Key>", self._calm_key)
         # yıldız alanı: göreli koordinatlar (0..1), yavaş sürüklenme + titreşim
         self._calm_stars = [{
             "x": random.random(), "y": random.random(),
@@ -1125,10 +1130,26 @@ class JarvisHUD:
         w = self.calm_c.winfo_width() or 1
         h = self.calm_c.winfo_height() or 1
         self._calm_mouse_t = (event.x / w - 0.5, event.y / h - 0.5)
+        self._calm_mouse_px = (event.x, event.y)
+
+    def _calm_key(self, event):
+        """Sakin modda yazmaya başlayınca terminale düş (akıcı geçiş)."""
+        ch = event.char
+        if not ch or not ch.isprintable() or not ch.strip():
+            return
+        self._hide_calm()
+        try:
+            self.nb.select(0)               # TERMİNAL sekmesi
+            self.entry.insert("end", ch)
+            self.entry.focus_set()
+            self.entry.icursor("end")
+        except Exception:
+            pass
 
     def _hide_calm(self):
         self.calm_c.place_forget()
         self._calm_visible = False
+        self._calm_notif = 0
         try:
             self.entry.focus_set()
         except Exception:
@@ -1142,6 +1163,10 @@ class JarvisHUD:
             self._toggle_voice()
             return
         if event.x > w - 180 and event.y > h - 56:
+            self._hide_calm()
+            return
+        # sağ üst bildirim rozeti → HUD'a geç
+        if self._calm_notif and (event.x - (w - 52)) ** 2 + (event.y - 52) ** 2 <= 20 ** 2:
             self._hide_calm()
             return
         # rozete tıklama: kıvılcım + nabız geri bildirimi
@@ -1286,6 +1311,18 @@ class JarvisHUD:
         c.create_text(26, h - 26, anchor="sw", text=tele,
                       fill=_fade(FG, 0.42), font=("Consolas", 9))
 
+        # sağ üst: bekleyen bildirim rozeti (tıklanınca HUD'a geçer)
+        if self._calm_notif:
+            bx, by = w - 52, 52
+            pulse = 0.55 + 0.18 * math.sin(t * 3.2)
+            c.create_oval(bx - 13, by - 13, bx + 13, by + 13,
+                          outline=_fade(ACCENT, pulse), width=1,
+                          fill=_mix(BG, ACCENT_LOW, 0.2))
+            c.create_text(bx, by, text=str(min(self._calm_notif, 9)),
+                          fill=_fade(WHITE, 0.85), font=("Consolas", 10, "bold"))
+            c.create_text(bx, by + 24, text="BİLDİRİM",
+                          fill=_fade(ACCENT, 0.4 * pulse), font=("Consolas", 7))
+
     # ---- merkez sahne: rozet + uydu ögeleri ----
     def _draw_calm_scene(self, c, w, h, t):
         import random
@@ -1345,14 +1382,15 @@ class JarvisHUD:
             c.create_oval(cx - r, cy - r, cx + r, cy + r,
                           outline=fade(ACCENT, a), width=1)
 
-        # --- ince tik kadranı (60 çizgi) + dönen vurgu yayı ---
-        hl = (t * 24) % 360
+        # --- ince tik kadranı (60 tik = 60 saniye, gerçek saniye ibresi) ---
+        now = datetime.now()
+        hl = ((now.second + now.microsecond / 1e6) * 6 - 90) % 360
         for k in range(60):
             adeg = k * 6
             diff = min(abs(adeg - hl), 360 - abs(adeg - hl))
             a = math.radians(adeg)
             r1, r2 = R * 0.94, R * 0.99
-            al = 0.6 if diff < 18 else 0.22
+            al = 0.22 + 0.48 * max(0.0, 1 - diff / 18)
             c.create_line(cx + r1 * math.cos(a), cy + r1 * math.sin(a),
                           cx + r2 * math.cos(a), cy + r2 * math.sin(a),
                           fill=fade(ACCENT, al), width=1)
@@ -1405,8 +1443,9 @@ class JarvisHUD:
             c.create_oval(x - 1.4, y - 1.4, x + 1.4, y + 1.4,
                           fill=fade(deco_ac, 0.55), outline="")
 
-        # --- radar tarama huzmesi (kuyruğu sönümlenen) ---
-        sweep = -t * 130
+        # --- radar tarama huzmesi (işlem sırasında hızlanır) ---
+        self._calm_sweep -= 6.2 if self._voice_state == "processing" else 2.6
+        sweep = self._calm_sweep
         for i in range(26):
             a = math.radians(sweep + i * 2.4)
             al = 0.42 * (1 - i / 26) ** 1.4
@@ -1414,11 +1453,23 @@ class JarvisHUD:
                           cx + R * 0.52 * math.cos(a), cy + R * 0.52 * math.sin(a),
                           fill=fade(ACCENT, al), width=1)
 
-        # --- çekirdek parlama ---
+        # --- çekirdek parlama (konuşurken hece ritmiyle nabız atar) ---
+        if self._voice_state == "speaking":
+            talk = abs(math.sin(t * 9)) * 0.6 + abs(math.sin(t * 23.7)) * 0.4
+        else:
+            talk = 0.0
+        core_m = 1 + 0.18 * talk
         for r, col, al in ((R * 0.20, ACCENT_LOW, 0.35), (R * 0.14, ACCENT, 0.55),
                            (R * 0.09, ACCENT, 1.0), (R * 0.045, WHITE, 1.0)):
+            r *= core_m
             c.create_oval(cx - r, cy - r, cx + r, cy + r,
                           fill=fade(col, al), outline="")
+        if talk > 0:
+            # sesle nefes alan iki ince konuşma halkası
+            for j, (rf, al) in enumerate(((0.27, 0.3), (0.36, 0.18))):
+                r = R * rf * (1 + 0.08 * talk)
+                c.create_oval(cx - r, cy - r, cx + r, cy + r,
+                              outline=fade(ACCENT, al + 0.15 * talk), width=1)
 
         # --- dışa yayılan nabız halkaları (boşta da, daha yavaş/soluk) ---
         self._calm_pulse_cd -= 1
@@ -1475,7 +1526,6 @@ class JarvisHUD:
         base_y = h / 2 - 26 + 190 * (0.55 + 0.45 * sc)
         c.create_text(w / 2, base_y + 34, text="  ".join(stxt),
                       fill=fade(ACCENT, 0.6), font=("Consolas", 10))
-        now = datetime.now()
         c.create_text(w / 2, base_y + 66, text=now.strftime("%H:%M"),
                       fill=fade(WHITE, 0.72), font=("Consolas", 24))
         c.create_text(w / 2, base_y + 90,
@@ -1485,21 +1535,29 @@ class JarvisHUD:
         # --- mikrofon düğmesi + çevresinde dönen mini yaylar ---
         mx, my = w / 2, h - 84
         self._calm_mic_pos = (mx, my)
+        mpx, mpy = self._calm_mouse_px
+        near_mic = (mpx - mx) ** 2 + (mpy - my) ** 2 <= 60 ** 2
         voice_on = bool(self.voice_input and getattr(self.voice_input, "_running", False))
+        hov = 0.22 if near_mic else 0.0
         c.create_oval(mx - 26, my - 26, mx + 26, my + 26,
-                      fill=_mix(BG, ACCENT_LOW, 0.18),
-                      outline=fade(ACCENT, 0.8 if voice_on else 0.5), width=1)
+                      fill=_mix(BG, ACCENT_LOW, 0.18 + 0.1 * (near_mic)),
+                      outline=fade(ACCENT, (0.8 if voice_on else 0.5) + hov), width=1)
         c.create_text(mx, my, text="🎤", font=("Segoe UI", 15),
-                      fill=fade(WHITE, 0.9 if voice_on else 0.6))
+                      fill=fade(WHITE, (0.9 if voice_on else 0.6) + hov))
         for k in range(3):
             a0 = t * 55 + k * 120
             c.create_arc(mx - 34, my - 34, mx + 34, my + 34,
                          start=a0, extent=46, style="arc",
-                         outline=fade(ACCENT, 0.62 if voice_on else 0.34), width=1)
+                         outline=fade(ACCENT, (0.62 if voice_on else 0.34) + hov),
+                         width=1)
+        if near_mic:
+            tip = "SESLİ MODU KAPAT" if voice_on else "SESLİ MODU AÇ"
+            c.create_text(mx, my + 42, text=tip,
+                          fill=fade(ACCENT, 0.55), font=("Consolas", 8))
 
         # --- mikrofonun iki yanında ince dalga kanatları ---
         active = self._voice_state in ("listening", "processing", "speaking")
-        amp = 2.2 + 4.5 * sc          # boşta fısıltı, aktifken canlı
+        amp = 2.2 + 4.5 * sc + 2.5 * talk   # konuşma ritmi genliğe de işler
         wing_al = 0.28 + 0.3 * sc
         for side in (1, -1):
             pts = []
@@ -1511,9 +1569,11 @@ class JarvisHUD:
                 pts += [x, my + yy]
             c.create_line(pts, fill=fade(ACCENT, wing_al), width=1, smooth=True)
 
-        # --- sağ alt: HUD arayüzüne dönüş ---
+        # --- sağ alt: HUD arayüzüne dönüş (hover'da parlar) ---
+        near_hud = mpx > w - 180 and mpy > h - 56
         c.create_text(w - 26, h - 26, text="◈ HUD ARAYÜZÜ  [ESC]",
-                      anchor="se", fill=_fade(FG, 0.5), font=("Consolas", 9))
+                      anchor="se", fill=_fade(FG, 0.8 if near_hud else 0.5),
+                      font=("Consolas", 9))
 
     # =================================================================
     #  ANİMASYONLAR
@@ -1771,6 +1831,8 @@ class JarvisHUD:
     #  TOAST BİLDİRİMLERİ
     # =================================================================
     def _toast(self, msg, duration=3000):
+        if self._calm_visible:
+            self._calm_notif += 1   # sakin mod rozet sayacı
         t = tk.Toplevel(self.root)
         t.overrideredirect(True)
         t.configure(bg=self.accent)
