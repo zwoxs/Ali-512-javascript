@@ -454,6 +454,13 @@ class JarvisHUD:
         style.map("TNotebook.Tab",
                   background=[("selected", th["bg_card"])],
                   foreground=[("selected", th["accent"])])
+        # yerleşik sekme başlıkları gizli: özel sekme çubuğu kullanılıyor
+        # (theme_use her çağrıda layout'u sıfırladığı için burada tekrarlanır)
+        if getattr(self, "_custom_tabbar", False):
+            try:
+                style.layout("TNotebook.Tab", [])
+            except tk.TclError:
+                pass
         # koyu temalı scrollbar
         style.configure("Jarvis.Vertical.TScrollbar",
                         background=_mix(th["bg_card"], th["accent"], 0.18),
@@ -463,17 +470,41 @@ class JarvisHUD:
                   background=[("active", _mix(th["bg_card"], th["accent"], 0.4))])
 
     def _scrolled(self, text_widget):
-        """Metin paneline temalı dikey scrollbar bağlar (pack'ten önce çağır)."""
+        """Metin/liste paneline temalı dikey scrollbar bağlar
+        (widget'ın kendi pack'inden önce çağır)."""
         sb = ttk.Scrollbar(text_widget.master, orient="vertical",
                            command=text_widget.yview,
                            style="Jarvis.Vertical.TScrollbar")
         text_widget.config(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y", pady=4)
 
+    def _zebra(self, lb):
+        """Listbox satırlarını dönüşümlü tonlarla boyar (okunurluk)."""
+        base = self.theme["bg_soft"]
+        alt = _mix(base, self.theme["white"], 0.04)
+        try:
+            for i in range(lb.size()):
+                lb.itemconfig(i, background=alt if i % 2 else base)
+        except tk.TclError:
+            pass
+
     def _build_tabs(self, parent):
+        self._custom_tabbar = False
         self._style_ttk()
+
+        # özel sekme çubuğu: kayan alt çizgi vurgusu
+        self._tabbar = tk.Frame(parent, bg=BG)
+        self._tabbar.pack(fill="x", pady=(4, 0))
+        self._tab_underline = tk.Canvas(parent, height=2, bg=BG,
+                                        highlightthickness=0)
+        self._tab_underline.pack(fill="x")
+        self._tab_lbls = []
+        self._ul_x = self._ul_w = 0.0
+        self._ul_target = (0.0, 0.0)
+        self._ul_anim = False
+
         self.nb = ttk.Notebook(parent)
-        self.nb.pack(fill="both", expand=True, pady=(4, 0))
+        self.nb.pack(fill="both", expand=True)
 
         self._build_terminal_tab()
         self._build_whatsapp_tab()
@@ -487,6 +518,55 @@ class JarvisHUD:
         self._build_stats_tab()
         self._build_calendar_tab()
         self._build_settings_tab()
+
+        # sekme etiketleri (Notebook başlıkları gizlenir, bunlar kullanılır)
+        for i in range(len(self.nb.tabs())):
+            lbl = tk.Label(self._tabbar, text=self.nb.tab(i, "text"), bg=BG,
+                           fg=FG_DIM, font=("Consolas", 9, "bold"),
+                           padx=5, pady=5, cursor="hand2")
+            lbl.pack(side="left")
+            lbl.bind("<Button-1>", lambda e, ix=i: self.nb.select(ix))
+            lbl.bind("<Enter>", lambda e, l=lbl: l.config(fg=self.accent))
+            lbl.bind("<Leave>", lambda e, ix=i, l=lbl: l.config(
+                fg=self.accent if self._current_tab() == ix else FG_DIM))
+            self._tab_lbls.append(lbl)
+        self._custom_tabbar = True
+        self._style_ttk()   # sekme başlıklarını gizle
+        self.nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        self.root.after(80, self._on_tab_changed)
+
+    def _current_tab(self):
+        try:
+            return self.nb.index("current")
+        except tk.TclError:
+            return -1
+
+    def _on_tab_changed(self, event=None):
+        """Seçili sekmeyi vurgular, alt çizgiyi ease-out ile kaydırır."""
+        cur = self._current_tab()
+        if cur < 0 or not self._tab_lbls:
+            return
+        for i, l in enumerate(self._tab_lbls):
+            l.config(fg=self.accent if i == cur else FG_DIM)
+        self._tabbar.update_idletasks()
+        l = self._tab_lbls[cur]
+        self._ul_target = (float(l.winfo_x()), float(l.winfo_width()))
+        if not self._ul_anim:
+            self._ul_anim = True
+            self._move_tab_underline()
+
+    def _move_tab_underline(self):
+        tx, tw = self._ul_target
+        self._ul_x += (tx - self._ul_x) * 0.3
+        self._ul_w += (tw - self._ul_w) * 0.3
+        c = self._tab_underline
+        c.delete("all")
+        c.create_rectangle(self._ul_x + 5, 0, self._ul_x + self._ul_w - 5, 2,
+                           fill=self.accent, outline="")
+        if abs(tx - self._ul_x) > 0.5 or abs(tw - self._ul_w) > 0.5:
+            self.root.after(16, self._move_tab_underline)
+        else:
+            self._ul_anim = False
 
     # ---- TERMİNAL ----
     def _build_terminal_tab(self):
@@ -558,6 +638,7 @@ class JarvisHUD:
         self.wa_contacts = tk.Listbox(tab, bg=BG2, fg=FG, bd=0,
                                       font=("Consolas", 10), selectbackground=self.accent,
                                       selectforeground=BG, highlightthickness=0)
+        self._scrolled(self.wa_contacts)
         self.wa_contacts.pack(fill="both", expand=True, padx=8, pady=8)
         self._refresh_contacts()
 
@@ -607,6 +688,7 @@ class JarvisHUD:
         self.notes_list = tk.Listbox(tab, bg=BG2, fg=FG, bd=0,
                                      font=("Consolas", 10), selectbackground=self.accent,
                                      selectforeground=BG, highlightthickness=0)
+        self._scrolled(self.notes_list)
         self.notes_list.pack(fill="both", expand=True, padx=8, pady=8)
         self.notes_list.bind("<Double-Button-1>", lambda e: self._delete_note())
         self._refresh_notes()
@@ -632,6 +714,7 @@ class JarvisHUD:
         self.todo_list = tk.Listbox(tab, bg=BG2, fg=FG, bd=0,
                                     font=("Consolas", 11), selectbackground=self.accent,
                                     selectforeground=BG, highlightthickness=0)
+        self._scrolled(self.todo_list)
         self.todo_list.pack(fill="both", expand=True, padx=8, pady=8)
         self.todo_list.bind("<Double-Button-1>", lambda e: self._toggle_todo())
         tk.Label(tab, text="Çift tık: tamamlandı işaretle  •  Del: sil",
@@ -659,6 +742,7 @@ class JarvisHUD:
         self.rem_list = tk.Listbox(tab, bg=BG2, fg=FG, bd=0,
                                    font=("Consolas", 10), selectbackground=self.accent,
                                    selectforeground=BG, highlightthickness=0)
+        self._scrolled(self.rem_list)
         self.rem_list.pack(fill="both", expand=True, padx=8, pady=8)
         self._refresh_reminders()
 
@@ -725,6 +809,7 @@ class JarvisHUD:
         self.bt_list = tk.Listbox(tab, bg=BG2, fg=FG, bd=0, font=("Consolas", 10),
                                   selectbackground=self.accent, selectforeground=BG,
                                   highlightthickness=0)
+        self._scrolled(self.bt_list)
         self.bt_list.pack(fill="both", expand=True, padx=8, pady=8)
         tk.Label(tab, text="Listeden bir ses cihazı seçip 'Buradan Konuş'a basın.",
                  bg=BG, fg=FG_DIM, font=("Consolas", 8)).pack()
@@ -757,6 +842,7 @@ class JarvisHUD:
             else:
                 addr = f"  ({it['address']})" if it.get("address") else ""
                 self.bt_list.insert("end", f"  {it['name']}{addr}")
+        self._zebra(self.bt_list)
 
     def _bt_scan(self):
         if not self.bluetooth:
@@ -1062,6 +1148,7 @@ class JarvisHUD:
             self.wa_contacts.delete(0, "end")
             for name, phone in self.orch.memory.list_contacts().items():
                 self.wa_contacts.insert("end", f"  {name}  —  {phone}")
+            self._zebra(self.wa_contacts)
         except Exception:
             pass
 
@@ -1083,6 +1170,7 @@ class JarvisHUD:
         self.notes_list.delete(0, "end")
         for n in self.orch.memory.list_notes():
             self.notes_list.insert("end", f"  • {n['text']}   ({n.get('ts','')[:16]})")
+        self._zebra(self.notes_list)
 
     def _add_note(self):
         text = self.note_entry.get().strip()
@@ -1103,6 +1191,7 @@ class JarvisHUD:
             mark = "✓" if t.get("done") else "○"
             pri = {"yüksek": "🔴", "orta": "🟡", "normal": "⚪"}.get(t.get("priority"), "⚪")
             self.todo_list.insert("end", f"  {mark} {pri} {t['text']}")
+        self._zebra(self.todo_list)
 
     def _add_todo(self):
         text = self.todo_entry.get().strip()
@@ -1127,6 +1216,7 @@ class JarvisHUD:
             self.rem_list.delete(0, "end")
             for r in self.orch.memory.list_reminders():
                 self.rem_list.insert("end", f"  ⏰ {r['text']}   →  {r.get('at','')}")
+            self._zebra(self.rem_list)
         except Exception:
             pass
 
@@ -1178,6 +1268,18 @@ class JarvisHUD:
             tk.Label(self.cal_grid, text=g, bg=BG, fg=fg,
                      font=("Consolas", 10, "bold"), width=4).grid(row=0, column=i, pady=4)
         today = datetime.now()
+        # bu ayda hatırlatıcısı olan günler (gün altına işaret konur)
+        rem_days = set()
+        try:
+            for r in self.orch.memory.list_reminders():
+                try:
+                    d = datetime.fromisoformat(str(r.get("at", "")))
+                except (TypeError, ValueError):
+                    continue
+                if d.year == self._cal_year and d.month == self._cal_month:
+                    rem_days.add(d.day)
+        except Exception:
+            pass
         cal = calendar.Calendar(firstweekday=0)
         row = 1
         for week in cal.monthdayscalendar(self._cal_year, self._cal_month):
@@ -1186,11 +1288,17 @@ class JarvisHUD:
                     continue
                 is_today = (day == today.day and self._cal_month == today.month
                             and self._cal_year == today.year)
+                has_rem = day in rem_days
                 bg = self.accent if is_today else BG2
-                fg = BG if is_today else ("#ff5252" if col >= 5 else FG)
-                tk.Label(self.cal_grid, text=str(day), bg=bg, fg=fg,
-                         font=("Consolas", 10, "bold" if is_today else "normal"),
-                         width=4, height=2).grid(row=row, column=col, padx=1, pady=1)
+                fg = BG if is_today else (
+                    self.accent if has_rem else
+                    ("#ff5252" if col >= 5 else FG))
+                text = f"{day}\n•" if has_rem else str(day)
+                tk.Label(self.cal_grid, text=text, bg=bg, fg=fg,
+                         font=("Consolas", 10,
+                               "bold" if (is_today or has_rem) else "normal"),
+                         width=4, height=2).grid(row=row, column=col,
+                                                 padx=1, pady=1)
             row += 1
 
     # =================================================================
@@ -2091,6 +2199,10 @@ class JarvisHUD:
             except Exception:
                 pass
         self._polish_entries()
+        try:
+            self._on_tab_changed()   # sekme etiketleri + alt çizgi rengi
+        except Exception:
+            pass
         self._toast(f"Tema: {name}")
 
     def _toggle_mute(self):
