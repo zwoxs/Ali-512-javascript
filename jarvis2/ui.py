@@ -246,6 +246,7 @@ class JarvisHUD:
 
         self._build_left_panel(body)
         self._build_center(body)
+        self._polish_entries()
 
         # sakin mod (tam ekran canvas, açılış görünümü)
         self._build_calm_mode()
@@ -260,6 +261,17 @@ class JarvisHUD:
 
         # uygulama açılışta sakin moda düşer
         self.root.after(80, self._show_calm)
+
+    def _polish_entries(self):
+        """Giriş kutularına odaklanınca vurgu rengiyle parlayan kenarlık."""
+        for e in (self.entry, self.wa_contact, self.wa_msg, self.hist_search,
+                  self.note_entry, self.todo_entry):
+            try:
+                e.config(highlightthickness=1,
+                         highlightbackground=self.theme["bg_soft"],
+                         highlightcolor=self.accent)
+            except Exception:
+                pass
 
     def _build_topbar(self):
         bar = tk.Frame(self.root, bg=BG2, height=44)
@@ -307,68 +319,92 @@ class JarvisHUD:
                         lambda e: self.set_theme(self.theme_var.get()))
 
     # ---------------- SOL PANEL ----------------
+    def _card(self, parent, title):
+        """Sol panel kartı: ince temalı kenarlık + vurgu çubuklu başlık.
+        Gövde çerçevesini döndürür; kart set_theme ile yeniden boyanır."""
+        outer = tk.Frame(parent, bg=BG_CARD, highlightthickness=1,
+                         highlightbackground=_mix(BG_CARD, ACCENT, 0.25))
+        outer.pack(fill="x", padx=10, pady=(0, 8))
+        head = tk.Frame(outer, bg=BG_CARD)
+        head.pack(fill="x")
+        bar = tk.Frame(head, bg=ACCENT, width=3, height=14)
+        bar.pack(side="left", padx=(8, 6), pady=6)
+        bar.pack_propagate(False)
+        lbl = tk.Label(head, text=title, bg=BG_CARD, fg=FG_DIM,
+                       font=("Consolas", 9, "bold"), anchor="w")
+        lbl.pack(side="left")
+        body = tk.Frame(outer, bg=BG_CARD)
+        body.pack(fill="both", expand=True)
+        self._cards.append((outer, bar))
+        return body
+
     def _build_left_panel(self, parent):
+        self._cards = []
         left = tk.Frame(parent, bg=BG2, width=300)
         left.pack(side="left", fill="y", padx=(0, 8))
         left.pack_propagate(False)
+        tk.Frame(left, bg=BG2, height=8).pack()   # üst boşluk
 
-        # analog + dijital saat
-        self.clock_canvas = tk.Canvas(left, width=280, height=180, bg=BG2,
+        # SAAT kartı: analog + dijital
+        cb = self._card(left, "SAAT")
+        self.clock_canvas = tk.Canvas(cb, width=260, height=150, bg=BG_CARD,
                                       highlightthickness=0)
-        self.clock_canvas.pack(pady=(10, 0))
-
-        self.digital_clock = tk.Label(left, text="--:--:--", bg=BG2,
+        self.clock_canvas.pack(pady=(2, 0))
+        self.digital_clock = tk.Label(cb, text="--:--:--", bg=BG_CARD,
                                       fg=self.accent, font=("Consolas", 20, "bold"))
         self.digital_clock.pack()
-        self.date_lbl = tk.Label(left, text="", bg=BG2, fg=FG_DIM,
+        self.date_lbl = tk.Label(cb, text="", bg=BG_CARD, fg=FG_DIM,
                                  font=("Consolas", 10))
-        self.date_lbl.pack(pady=(0, 8))
+        self.date_lbl.pack(pady=(0, 6))
 
-        # hava durumu
-        self.weather_lbl = tk.Label(left, text="", bg=BG2, fg=FG,
-                                    font=("Consolas", 11), wraplength=270,
+        # HAVA kartı
+        wb = self._card(left, "HAVA DURUMU")
+        self.weather_lbl = tk.Label(wb, text="—", bg=BG_CARD, fg=FG,
+                                    font=("Consolas", 11), wraplength=250,
                                     justify="center")
-        self.weather_lbl.pack(pady=(0, 6))
+        self.weather_lbl.pack(pady=(0, 6), fill="x")
 
-        # sistem çubukları
-        self._build_sys_bars(left)
+        # SİSTEM DURUMU kartı
+        self._build_sys_bars(self._card(left, "SİSTEM DURUMU"))
 
-        # akıllı ev durumu
-        self.home_lbl = tk.Label(left, text="🏠 Akıllı Ev: —", bg=BG2, fg=FG,
+        # AKILLI EV kartı
+        hb = self._card(left, "AKILLI EV")
+        self.home_lbl = tk.Label(hb, text="🏠 Akıllı Ev: —", bg=BG_CARD, fg=FG,
                                  font=("Consolas", 10))
-        self.home_lbl.pack(pady=(8, 4))
+        self.home_lbl.pack(pady=(0, 6))
 
-        # hızlı butonlar
-        self._build_quick_buttons(left)
+        # HIZLI ERİŞİM kartı
+        self._build_quick_buttons(self._card(left, "HIZLI ERİŞİM"))
 
     def _build_sys_bars(self, parent):
-        frame = tk.Frame(parent, bg=BG2)
-        frame.pack(fill="x", padx=16, pady=6)
+        frame = tk.Frame(parent, bg=BG_CARD)
+        frame.pack(fill="x", padx=10, pady=(0, 6))
         self.bars = {}
         for key in ("CPU", "RAM", "DİSK", "PİL"):
-            row = tk.Frame(frame, bg=BG2)
+            row = tk.Frame(frame, bg=BG_CARD)
             row.pack(fill="x", pady=3)
-            tk.Label(row, text=key, bg=BG2, fg=FG_DIM, width=5,
+            tk.Label(row, text=key, bg=BG_CARD, fg=FG_DIM, width=5,
                      anchor="w", font=("Consolas", 9)).pack(side="left")
-            cv = tk.Canvas(row, width=180, height=12, bg=BG3,
+            cv = tk.Canvas(row, width=160, height=12, bg=BG,
                            highlightthickness=0)
             cv.pack(side="left", padx=4)
-            val = tk.Label(row, text="0%", bg=BG2, fg=FG, width=4,
+            val = tk.Label(row, text="0%", bg=BG_CARD, fg=FG, width=4,
                            font=("Consolas", 9))
             val.pack(side="left")
             self.bars[key] = (cv, val)
 
     def _build_quick_buttons(self, parent):
-        grid = tk.Frame(parent, bg=BG2)
-        grid.pack(fill="x", padx=12, pady=8)
+        grid = tk.Frame(parent, bg=BG_CARD)
+        grid.pack(fill="x", padx=8, pady=(0, 6))
         quick = [
             ("Priz Aç", "priz aç"), ("Priz Kapat", "priz kapat"),
             ("WhatsApp", "whatsapp aç"), ("Hava", "hava durumu"),
             ("Plan", "günaydın"), ("İstatistik", "istatistik"),
             ("Kilitle", "ekranı kilitle"), ("Ekran G.", "ekran görüntüsü al"),
         ]
+        btn_bg = _mix(BG_CARD, WHITE, 0.06)
         for i, (label, cmd) in enumerate(quick):
-            b = tk.Button(grid, text=label, bg=BG3, fg=FG, bd=0,
+            b = tk.Button(grid, text=label, bg=btn_bg, fg=FG, bd=0,
                           activebackground=self.accent, activeforeground=BG,
                           font=("Consolas", 9), cursor="hand2", width=12,
                           command=lambda c=cmd: self._run_command(c))
@@ -401,19 +437,41 @@ class JarvisHUD:
         # sekmeler
         self._build_tabs(center)
 
-    def _build_tabs(self, parent):
+    def _style_ttk(self):
+        """ttk stillerini hedef paletle (yeniden) uygular.
+        Tema geçişi animasyonlu aktığı için globaller yerine
+        self.theme'deki hedef renkler kullanılır."""
+        th = self.theme
         style = ttk.Style()
         try:
             style.theme_use("clam")
         except tk.TclError:
             pass
-        style.configure("TNotebook", background=BG, borderwidth=0)
-        style.configure("TNotebook.Tab", background=BG2, foreground=FG_DIM,
+        style.configure("TNotebook", background=th["bg"], borderwidth=0)
+        style.configure("TNotebook.Tab", background=th["bg_soft"],
+                        foreground=th["fg_dim"],
                         padding=(12, 6), font=("Consolas", 9, "bold"))
         style.map("TNotebook.Tab",
-                  background=[("selected", BG3)],
-                  foreground=[("selected", self.accent)])
+                  background=[("selected", th["bg_card"])],
+                  foreground=[("selected", th["accent"])])
+        # koyu temalı scrollbar
+        style.configure("Jarvis.Vertical.TScrollbar",
+                        background=_mix(th["bg_card"], th["accent"], 0.18),
+                        troughcolor=th["bg"], bordercolor=th["bg"],
+                        arrowcolor=th["fg_dim"], relief="flat")
+        style.map("Jarvis.Vertical.TScrollbar",
+                  background=[("active", _mix(th["bg_card"], th["accent"], 0.4))])
 
+    def _scrolled(self, text_widget):
+        """Metin paneline temalı dikey scrollbar bağlar (pack'ten önce çağır)."""
+        sb = ttk.Scrollbar(text_widget.master, orient="vertical",
+                           command=text_widget.yview,
+                           style="Jarvis.Vertical.TScrollbar")
+        text_widget.config(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y", pady=4)
+
+    def _build_tabs(self, parent):
+        self._style_ttk()
         self.nb = ttk.Notebook(parent)
         self.nb.pack(fill="both", expand=True, pady=(4, 0))
 
@@ -438,6 +496,7 @@ class JarvisHUD:
         self.chat = tk.Text(tab, bg=BG, fg=FG, bd=0, wrap="word",
                             font=("Consolas", 11), state="disabled",
                             insertbackground=self.accent, padx=10, pady=8)
+        self._scrolled(self.chat)
         self.chat.pack(fill="both", expand=True, padx=4, pady=4)
         self.chat.tag_config("user", foreground="#7fdbff")
         self.chat.tag_config("jarvis", foreground=self.accent)
@@ -508,6 +567,7 @@ class JarvisHUD:
         self.nb.add(tab, text="LOG")
         self.log_text = tk.Text(tab, bg=BG, fg=FG_DIM, bd=0, wrap="word",
                                 font=("Consolas", 9), state="disabled", padx=8, pady=6)
+        self._scrolled(self.log_text)
         self.log_text.pack(fill="both", expand=True, padx=4, pady=4)
 
     # ---- GEÇMİŞ ----
@@ -526,6 +586,7 @@ class JarvisHUD:
 
         self.hist_text = tk.Text(tab, bg=BG, fg=FG, bd=0, wrap="word",
                                  font=("Consolas", 10), state="disabled", padx=8, pady=6)
+        self._scrolled(self.hist_text)
         self.hist_text.pack(fill="both", expand=True, padx=4, pady=4)
         self._refresh_history()
 
@@ -1901,15 +1962,20 @@ class JarvisHUD:
     def _draw_analog_clock(self, now):
         c = self.clock_canvas
         c.delete("all")
-        cx, cy, R = 140, 90, 78
+        cx, cy, R = 130, 76, 64
         acc, glow = self.accent, self.theme["glow"]
-        c.create_oval(cx - R, cy - R, cx + R, cy + R, outline=acc, width=2)
+        # sakin modla aynı dil: ince çift çember + soluk tikler
+        c.create_oval(cx - R, cy - R, cx + R, cy + R,
+                      outline=_mix(BG_CARD, acc, 0.7), width=1)
+        r2_ = R - 5
+        c.create_oval(cx - r2_, cy - r2_, cx + r2_, cy + r2_,
+                      outline=_mix(BG_CARD, acc, 0.25), width=1)
         for i in range(12):
             a = math.radians(i * 30 - 90)
-            r1, r2 = R - 8, R
+            r1, r2 = R - 8, R - 2
             c.create_line(cx + r1 * math.cos(a), cy + r1 * math.sin(a),
                           cx + r2 * math.cos(a), cy + r2 * math.sin(a),
-                          fill=glow, width=2)
+                          fill=_mix(BG_CARD, glow, 0.55), width=1)
         # akrep, yelkovan, saniye
         h = now.hour % 12 + now.minute / 60
         m = now.minute + now.second / 60
@@ -1942,9 +2008,19 @@ class JarvisHUD:
         for key, (cv, lbl) in self.bars.items():
             v = vals[key]
             cv.delete("all")
-            w = 180 * (v / 100)
-            col = "#ff5252" if v > 85 else self.accent
-            cv.create_rectangle(0, 0, w, 12, fill=col, outline="")
+            # segmentli HUD çubuğu: dolu kısım vurguya doğru parlayan dilimler
+            segs, bw = 20, 160 / 20
+            lit = round(segs * v / 100)
+            hot = v > 85
+            for i in range(segs):
+                x0 = i * bw
+                if i < lit:
+                    col = ("#ff5252" if hot else
+                           _mix(BG, self.accent, 0.4 + 0.6 * (i + 1) / segs))
+                else:
+                    col = _mix(BG, WHITE, 0.05)
+                cv.create_rectangle(x0 + 1, 2, x0 + bw - 1, 10,
+                                    fill=col, outline="")
             lbl.config(text=f"{int(v)}%")
 
         # akıllı ev durumu
@@ -2002,6 +2078,19 @@ class JarvisHUD:
             self.stats_text.config(fg=self.accent)
         except Exception:
             pass
+        # kartlar, ttk stilleri ve giriş kutuları yeni paletle boyanır
+        try:
+            self._style_ttk()
+        except Exception:
+            pass
+        for outer, bar in getattr(self, "_cards", []):
+            try:
+                outer.config(highlightbackground=_mix(
+                    self.theme["bg_card"], self.accent, 0.25))
+                bar.config(bg=self.accent)
+            except Exception:
+                pass
+        self._polish_entries()
         self._toast(f"Tema: {name}")
 
     def _toggle_mute(self):
@@ -2036,23 +2125,59 @@ class JarvisHUD:
         t = tk.Toplevel(self.root)
         t.overrideredirect(True)
         t.configure(bg=self.accent)
-        t.attributes("-topmost", True)
+        try:
+            t.attributes("-topmost", True)
+            t.attributes("-alpha", 0.0)
+        except tk.TclError:
+            pass
         lbl = tk.Label(t, text=f"  {msg}  ", bg=BG3, fg=self.accent,
                        font=("Consolas", 10, "bold"), padx=10, pady=8)
-        lbl.pack(padx=2, pady=2)
+        lbl.pack(padx=1, pady=1)
         self.root.update_idletasks()
-        x = self.root.winfo_x() + self.root.winfo_width() - 260
-        y = self.root.winfo_y() + 60 + len(self._toasts) * 50
-        t.geometry(f"+{x}+{y}")
+        fx = self.root.winfo_x() + self.root.winfo_width() - 260
+        fy = self.root.winfo_y() + 60 + len(self._toasts) * 50
+        t.geometry(f"+{fx + 36}+{fy}")
         self._toasts.append(t)
 
         def close():
             try:
                 self._toasts.remove(t)
+            except ValueError:
+                pass
+            try:
                 t.destroy()
             except Exception:
                 pass
-        t.after(duration, close)
+
+        def slide(k=0):
+            """Sağdan kayarak + soluklaşarak giriş (ease-out)."""
+            if not t.winfo_exists():
+                return
+            p = min(1.0, k / 10)
+            ease = 1 - (1 - p) ** 3
+            try:
+                t.geometry(f"+{int(fx + 36 * (1 - ease))}+{fy}")
+                t.attributes("-alpha", ease)
+            except tk.TclError:
+                pass
+            if p < 1.0:
+                t.after(16, lambda: slide(k + 1))
+
+        def fade_out(k=0):
+            if not t.winfo_exists():
+                return
+            p = min(1.0, k / 8)
+            try:
+                t.attributes("-alpha", 1 - p)
+            except tk.TclError:
+                pass
+            if p < 1.0:
+                t.after(16, lambda: fade_out(k + 1))
+            else:
+                close()
+
+        slide()
+        t.after(duration, fade_out)
 
     # =================================================================
     #  BOOT & ÇALIŞTIRMA
